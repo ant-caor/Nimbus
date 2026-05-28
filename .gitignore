@@ -1,0 +1,21 @@
+# Binaries and test artifacts
+*.exe
+*.test
+*.out
+/bin/
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+
+# OS / editor
+.DS_Store
+*.swp
