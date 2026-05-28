@@ -1,0 +1,125 @@
+// Command demo is a tiny HTTP service that exercises runcache with an L1 plus a
+// Redis L2, so you can experiment with cross-instance behavior locally via
+// docker compose. Two instances (svc-a, svc-b) share one Redis.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/redis/rueidis"
+
+	"github.com/ant-caor/runcache"
+	"github.com/ant-caor/runcache/redisstore"
+	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/runcache/store/memory"
+)
+
+func main() {
+	redisAddr := env("REDIS_ADDR", "localhost:6379")
+	instance := env("INSTANCE_ID", hostname())
+	port := env("PORT", "8080")
+
+	rdb, err := rueidis.NewClient(rueidis.ClientOption{
+		InitAddress:  []string{redisAddr},
+		DisableCache: true, // runcache owns the in-process cache layer
+	})
+	if err != nil {
+		log.Fatalf("connect redis: %v", err)
+	}
+	defer rdb.Close()
+
+	l2 := redisstore.New[string](rdb, store.JSON[string]())
+	cache, err := runcache.NewBuilder[string, string](func(_ context.Context, key string) (string, error) {
+		time.Sleep(200 * time.Millisecond) // pretend the origin is slow
+		return fmt.Sprintf("origin(%s) loaded by %s at %s", key, instance, time.Now().Format(time.RFC3339Nano)), nil
+	}).
+		L1(memory.New[string]()).
+		L2(l2).
+		TTL(30*time.Second, 60*time.Second).
+		Build()
+	if err != nil {
+		log.Fatalf("build cache: %v", err)
+	}
+	defer func() { _ = cache.Close() }()
+
+	mux := http.NewServeMux()
+
+	// GET /get?key=foo -> read-through; reports latency so you can see L1/L2 hits.
+	mux.HandleFunc("GET /get", func(w http.ResponseWriter, r *http.Request) {
+		key := orDefault(r.URL.Query().Get("key"), "demo")
+		start := time.Now()
+		v, err := cache.GetOrLoad(r.Context(), key)
+		writeJSON(w, map[string]any{
+			"instance": instance, "key": key, "value": v,
+			"took_ms": time.Since(start).Milliseconds(), "error": errStr(err),
+		})
+	})
+
+	// POST /set?key=foo&value=bar
+	mux.HandleFunc("POST /set", func(w http.ResponseWriter, r *http.Request) {
+		key := orDefault(r.URL.Query().Get("key"), "demo")
+		val := r.URL.Query().Get("value")
+		err := cache.Set(r.Context(), key, val)
+		writeJSON(w, map[string]any{"instance": instance, "key": key, "set": val, "error": errStr(err)})
+	})
+
+	// POST /invalidate?key=foo
+	mux.HandleFunc("POST /invalidate", func(w http.ResponseWriter, r *http.Request) {
+		key := orDefault(r.URL.Query().Get("key"), "demo")
+		err := cache.Invalidate(r.Context(), key)
+		writeJSON(w, map[string]any{"instance": instance, "key": key, "invalidated": true, "error": errStr(err)})
+	})
+
+	mux.HandleFunc("GET /stats", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, map[string]any{"instance": instance, "stats": cache.Stats()})
+	})
+
+	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	log.Printf("runcache demo %q listening on :%s (redis %s)", instance, port, redisAddr)
+	srv := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	log.Fatal(srv.ListenAndServe())
+}
+
+func writeJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func env(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
+func orDefault(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+func hostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	return h
+}
+
+func errStr(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}

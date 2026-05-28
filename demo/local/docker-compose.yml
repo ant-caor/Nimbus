@@ -1,0 +1,42 @@
+name: runcache-demo
+
+# Two service instances share one Redis, mirroring multiple Cloud Run instances
+# behind one Memorystore. Use it to watch cross-instance behavior locally.
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
+
+  svc-a:
+    build:
+      context: ../..
+      dockerfile: demo/local/Dockerfile
+    environment:
+      REDIS_ADDR: "redis:6379"
+      INSTANCE_ID: "svc-a"
+      PORT: "8080"
+    ports:
+      - "8081:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  svc-b:
+    build:
+      context: ../..
+      dockerfile: demo/local/Dockerfile
+    environment:
+      REDIS_ADDR: "redis:6379"
+      INSTANCE_ID: "svc-b"
+      PORT: "8080"
+    ports:
+      - "8082:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
