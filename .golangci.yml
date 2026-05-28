@@ -1,0 +1,12 @@
+version: "2"
+
+linters:
+  enable:
+    - revive
+    - misspell
+    - unconvert
+    - bodyclose
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
