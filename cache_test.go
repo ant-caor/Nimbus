@@ -184,3 +184,44 @@ func TestBuildRequiresLoader(t *testing.T) {
 		t.Fatal("expected error when loader is nil")
 	}
 }
+
+// TestRefreshCountedOncePerStaleWave verifies that many concurrent stale reads
+// of one key dedupe to a single counted refresh (not one per reader).
+func TestRefreshCountedOncePerStaleWave(t *testing.T) {
+	t.Parallel()
+	mc := clock.NewMock(time.Now())
+	var loads atomic.Int64
+	release := make(chan struct{})
+	loader := func(_ context.Context, _ string) (int, error) {
+		if loads.Add(1) >= 2 {
+			<-release // hold the refresh load in flight so duplicates are suppressed
+		}
+		return 1, nil
+	}
+	c, err := NewBuilder[string, int](loader).TTL(time.Minute, time.Hour).Clock(mc).Build()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { close(release); _ = c.Close() })
+	ctx := context.Background()
+
+	if _, err := c.GetOrLoad(ctx, "k"); err != nil {
+		t.Fatal(err)
+	}
+	mc.Advance(2 * time.Minute) // now stale, still servable
+
+	const n = 50
+	var wg sync.WaitGroup
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, _ = c.GetOrLoad(ctx, "k") // serves stale immediately, schedules a refresh
+		}()
+	}
+	wg.Wait()
+
+	if s := c.Stats(); s.Refreshes != 1 {
+		t.Fatalf("Refreshes = %d, want 1 (concurrent stale reads should dedupe to one refresh)", s.Refreshes)
+	}
+}

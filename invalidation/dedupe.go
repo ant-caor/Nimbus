@@ -7,10 +7,11 @@ import "sync"
 // itself is already idempotent, so a missed dedupe only costs a redundant
 // evict, never correctness).
 type Dedupe struct {
-	mu    sync.Mutex
-	seen  map[string]struct{}
-	order []string
-	idx   int
+	mu     sync.Mutex
+	seen   map[string]struct{}
+	order  []string
+	idx    int
+	filled int
 }
 
 // NewDedupe returns a Dedupe remembering the last capacity IDs.
@@ -32,8 +33,12 @@ func (d *Dedupe) Seen(id string) bool {
 	if _, ok := d.seen[id]; ok {
 		return true
 	}
-	if old := d.order[d.idx]; old != "" {
-		delete(d.seen, old)
+	// Track occupancy explicitly rather than treating "" as an empty slot, so
+	// an empty-string ID is deduped like any other value.
+	if d.filled == len(d.order) {
+		delete(d.seen, d.order[d.idx]) // ring is full: evict the oldest ID
+	} else {
+		d.filled++
 	}
 	d.order[d.idx] = id
 	d.idx = (d.idx + 1) % len(d.order)

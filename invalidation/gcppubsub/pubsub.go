@@ -104,20 +104,26 @@ func (b *Bus) Subscribe(ctx context.Context, handler func(invalidation.Event)) e
 	req := &pubsubpb.Subscription{
 		Name:               subName,
 		Topic:              b.topicName,
-		AckDeadlineSeconds: int32(b.cfg.ackDeadline.Seconds()),
+		AckDeadlineSeconds: clampAckSeconds(b.cfg.ackDeadline),
 	}
 	if b.cfg.subscriptionTTL > 0 {
 		req.ExpirationPolicy = &pubsubpb.ExpirationPolicy{Ttl: durationpb.New(b.cfg.subscriptionTTL)}
 	}
-	if _, err := b.client.SubscriptionAdminClient.CreateSubscription(ctx, req); err != nil && status.Code(err) != codes.AlreadyExists {
-		return fmt.Errorf("gcppubsub: create subscription: %w", err)
+	created := true
+	if _, err := b.client.SubscriptionAdminClient.CreateSubscription(ctx, req); err != nil {
+		if status.Code(err) != codes.AlreadyExists {
+			return fmt.Errorf("gcppubsub: create subscription: %w", err)
+		}
+		created = false // another holder owns this subscription; don't tear it down
 	}
-	defer func() {
-		// Best-effort teardown with a fresh context, since ctx is cancelled.
-		dctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = b.client.SubscriptionAdminClient.DeleteSubscription(dctx, &pubsubpb.DeleteSubscriptionRequest{Subscription: subName})
-	}()
+	if created {
+		defer func() {
+			// Best-effort teardown with a fresh context, since ctx is cancelled.
+			dctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = b.client.SubscriptionAdminClient.DeleteSubscription(dctx, &pubsubpb.DeleteSubscriptionRequest{Subscription: subName})
+		}()
+	}
 
 	sub := b.client.Subscriber(b.cfg.subscriptionID)
 	return sub.Receive(ctx, func(_ context.Context, m *pubsub.Message) {
@@ -138,6 +144,19 @@ func randHex() string {
 	var b [8]byte
 	_, _ = crand.Read(b[:])
 	return hex.EncodeToString(b[:])
+}
+
+// clampAckSeconds rounds the ack deadline up to whole seconds and clamps it to
+// the Pub/Sub-valid range of [10s, 600s].
+func clampAckSeconds(d time.Duration) int32 {
+	secs := int32((d + time.Second - 1) / time.Second)
+	if secs < 10 {
+		secs = 10
+	}
+	if secs > 600 {
+		secs = 600
+	}
+	return secs
 }
 
 var _ invalidation.Bus = (*Bus)(nil)
@@ -182,6 +201,9 @@ func ensureTopic(ctx context.Context, client *pubsub.Client, topicName string) e
 
 // Publish broadcasts an invalidation event to the topic.
 func (p *PushBus) Publish(ctx context.Context, ev invalidation.Event) error {
+	if p.publisher == nil {
+		return nil // zero-value (receive-only) PushBus: nothing to publish to
+	}
 	data, err := json.Marshal(ev)
 	if err != nil {
 		return err

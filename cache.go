@@ -21,7 +21,9 @@ import (
 // fresh until evicted by L1 capacity pressure.
 const noExpiry = 100 * 365 * 24 * time.Hour
 
-// Stats is a point-in-time snapshot of cache counters.
+// Stats is a snapshot of cache counters. The counters are monotonic and read
+// independently, so a snapshot is eventually-consistent rather than a single
+// consistent instant (Hits and Misses may be sampled a few operations apart).
 type Stats struct {
 	Hits         uint64
 	StaleHits    uint64 // served stale while a revalidation was scheduled
@@ -37,8 +39,9 @@ type Stats struct {
 
 // Cache is a Cloud Run-first cache keyed by a user type K with values of type V.
 type Cache[K comparable, V any] interface {
-	// Get returns a cached value if present and servable (fresh or stale). It
-	// never invokes the loader. A negative (known-absent) entry reports false.
+	// Get returns a cached value if present and servable (fresh or stale). It is
+	// a read-only peek: it never invokes the loader, never schedules a
+	// revalidation, and does not update Stats. A negative entry reports false.
 	Get(ctx context.Context, key K) (V, bool, error)
 	// GetOrLoad returns the value, loading it through the loader on a miss with
 	// stampede protection. It returns ErrNotFound on a negative hit.
@@ -73,7 +76,7 @@ func WithTags(tags ...string) EntryOption {
 type cache[K comparable, V any] struct {
 	loader    Loader[K, V]
 	l1        store.Store[V]
-	l2        store.VersionedStore[V] // nil until M3
+	l2        store.VersionedStore[V] // nil when no shared L2 tier is configured
 	bus       invalidation.Bus
 	dedupe    *invalidation.Dedupe
 	sf        singleflight.Group[V]
@@ -230,8 +233,7 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 }
 
 func (c *cache[K, V]) scheduleRefresh(key K, ks string) {
-	atomic.AddUint64(&c.stats.refreshes, 1)
-	c.refresher.Schedule(ks, func(ctx context.Context) error {
+	launched := c.refresher.Schedule(ks, func(ctx context.Context) error {
 		// fill reads L2's version first, so a refresh reconciles against the
 		// source of truth instead of blindly trusting the loader.
 		if _, err := c.fill(ctx, key, ks); err != nil && !errors.Is(err, ErrNotFound) {
@@ -239,6 +241,9 @@ func (c *cache[K, V]) scheduleRefresh(key K, ks string) {
 		}
 		return nil
 	})
+	if launched { // count real refreshes, not suppressed duplicates
+		atomic.AddUint64(&c.stats.refreshes, 1)
+	}
 }
 
 func (c *cache[K, V]) Set(ctx context.Context, key K, val V, opts ...EntryOption) error {
@@ -316,14 +321,12 @@ func (c *cache[K, V]) InvalidateTag(ctx context.Context, tag string) error {
 		return ErrClosed
 	}
 	var keys []string
+	var resErr error
 	if c.l2 != nil {
-		// Authoritative resolution from L2's tag index; returns the keys it
-		// tombstoned so we can broadcast them.
-		k, err := c.l2.DeleteByTag(ctx, tag)
-		if err != nil {
-			return err
-		}
-		keys = k
+		// Authoritative resolution from L2's tag index. On a partial failure it
+		// still returns the keys it managed to tombstone, so we evict and
+		// broadcast those before surfacing the error.
+		keys, resErr = c.l2.DeleteByTag(ctx, tag)
 	} else {
 		// L1-only: the local, non-authoritative tag index (single instance).
 		c.tagMu.Lock()
@@ -349,7 +352,7 @@ func (c *cache[K, V]) InvalidateTag(ctx context.Context, tag string) error {
 			EmittedAt: c.clk.Now(),
 		})
 	}
-	return nil
+	return resErr
 }
 
 func (c *cache[K, V]) Stats() Stats {
@@ -391,7 +394,8 @@ func (c *cache[K, V]) publish(ctx context.Context, ev invalidation.Event) {
 	if c.bus == nil {
 		return
 	}
-	// Best-effort in M1 (Nop bus). M4 adds error handling and backoff.
+	// Best-effort: a failed broadcast is tolerated because L2 is the source of
+	// truth and instances converge on their next L2 read.
 	_ = c.bus.Publish(ctx, ev)
 }
 

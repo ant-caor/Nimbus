@@ -71,21 +71,22 @@ func (b *Background) context() (context.Context, context.CancelFunc) {
 
 // Schedule enqueues run for key unless one is in flight or the queue is full
 // (in which case the refresh is dropped and the entry stays stale until the
-// next trigger).
-func (b *Background) Schedule(key string, run func(ctx context.Context) error) {
+// next trigger). It returns true only when it actually enqueues a refresh.
+func (b *Background) Schedule(key string, run func(ctx context.Context) error) bool {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closing {
-		return
+		return false
 	}
 	if _, ok := b.inflight[key]; ok {
-		return
+		return false
 	}
 	select {
 	case b.jobs <- job{key: key, run: run}:
 		b.inflight[key] = struct{}{}
+		return true
 	default:
-		// queue full: drop
+		return false // queue full: drop
 	}
 }
 

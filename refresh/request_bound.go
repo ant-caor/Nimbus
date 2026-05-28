@@ -6,12 +6,16 @@ import (
 	"time"
 )
 
-// RequestBound revalidates stale entries on an ad-hoc goroutine launched from
-// the request that observed the staleness. It keeps no long-lived worker pool.
+// RequestBound revalidates stale entries on an ad-hoc detached goroutine; it
+// keeps no long-lived worker pool.
 //
-// On Cloud Run with request-only CPU allocation this is the safe default: the
-// refresh makes progress while a request holds CPU. It does not promise to run
-// between requests, which is acceptable because the next request re-triggers it.
+// On Cloud Run with request-only CPU allocation this is the safe default, but
+// note the honest semantics: the refresh goroutine is detached (it does not
+// share the triggering request's context), and Cloud Run allocates CPU per
+// instance only while that instance is processing requests. So the refresh
+// makes progress whenever the instance is handling any request and may stall
+// while the instance is idle; the next request re-triggers a still-stale entry.
+// It is best-effort, bounded by RefreshTimeout, not a guarantee of completion.
 type RequestBound struct {
 	timeout  time.Duration
 	mu       sync.Mutex
@@ -26,16 +30,17 @@ func NewRequestBound(timeout time.Duration) *RequestBound {
 	return &RequestBound{timeout: timeout, inflight: make(map[string]struct{})}
 }
 
-// Schedule launches run for key unless a refresh for key is already in flight.
-func (r *RequestBound) Schedule(key string, run func(ctx context.Context) error) {
+// Schedule launches run for key unless a refresh for key is already in flight
+// or the refresher is closed. It returns true only when it actually launches.
+func (r *RequestBound) Schedule(key string, run func(ctx context.Context) error) bool {
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return
+		return false
 	}
 	if _, ok := r.inflight[key]; ok {
 		r.mu.Unlock()
-		return
+		return false
 	}
 	r.inflight[key] = struct{}{}
 	r.wg.Add(1)
@@ -52,6 +57,7 @@ func (r *RequestBound) Schedule(key string, run func(ctx context.Context) error)
 		defer cancel()
 		_ = run(ctx)
 	}()
+	return true
 }
 
 func (r *RequestBound) context() (context.Context, context.CancelFunc) {
