@@ -12,9 +12,11 @@ import (
 	"os"
 	"time"
 
+	pubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/redis/rueidis"
 
 	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/invalidation/gcppubsub"
 	"github.com/ant-caor/nimbus/redisstore"
 	"github.com/ant-caor/nimbus/store"
 	"github.com/ant-caor/nimbus/store/memory"
@@ -35,14 +37,38 @@ func main() {
 	defer rdb.Close()
 
 	l2 := redisstore.New[string](rdb, store.JSON[string]())
-	cache, err := nimbus.NewBuilder[string, string](func(_ context.Context, key string) (string, error) {
+	loader := func(_ context.Context, key string) (string, error) {
 		time.Sleep(200 * time.Millisecond) // pretend the origin is slow
 		return fmt.Sprintf("origin(%s) loaded by %s at %s", key, instance, time.Now().Format(time.RFC3339Nano)), nil
-	}).
+	}
+	builder := nimbus.NewBuilder[string, string](loader).
 		L1(memory.New[string]()).
 		L2(l2).
-		TTL(30*time.Second, 60*time.Second).
-		Build()
+		TTL(30*time.Second, 60*time.Second)
+
+	// Cross-instance invalidation bus. Enabled when PUBSUB_EMULATOR_HOST is set
+	// (docker compose wires the emulator); without it the demo runs L2-only and a
+	// non-receiving instance converges on its next L2 read instead of instantly.
+	if emuHost := os.Getenv("PUBSUB_EMULATOR_HOST"); emuHost != "" {
+		projectID := env("PUBSUB_PROJECT_ID", "nimbus-demo")
+		topicID := env("PUBSUB_TOPIC", "nimbus-demo-invalidations")
+		psClient, err := pubsub.NewClient(context.Background(), projectID)
+		if err != nil {
+			log.Fatalf("connect pubsub: %v", err)
+		}
+		defer psClient.Close()
+		// The emulator does not support the subscription expiration policy, so
+		// disable it (TTL 0). Each instance gets its own random subscription, so
+		// a broadcast fans out to every instance.
+		bus, err := gcppubsub.New(context.Background(), psClient, topicID, gcppubsub.WithSubscriptionTTL(0))
+		if err != nil {
+			log.Fatalf("create pubsub bus: %v", err)
+		}
+		builder = builder.Bus(bus)
+		log.Printf("nimbus demo %q: Pub/Sub bus enabled (emulator %s, topic %q)", instance, emuHost, topicID)
+	}
+
+	cache, err := builder.Build()
 	if err != nil {
 		log.Fatalf("build cache: %v", err)
 	}
