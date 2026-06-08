@@ -131,6 +131,27 @@ cross-instance bus over Pub/Sub deployed to Cloud Run via Terraform, see
 
 ---
 
+## Invalidation transports
+
+The bus is an interface (`invalidation.Bus`), so the transport is pluggable:
+
+| Transport | Package | Notes |
+|---|---|---|
+| GCP Pub/Sub (pull) | `invalidation/gcppubsub` | true fan-out; needs always-on CPU |
+| GCP Pub/Sub (push) | `invalidation/gcppubsub` | load-balanced; throttle-safe for request-only-CPU Cloud Run |
+| Redis Pub/Sub | `invalidation/redispubsub` | reuses the Redis client your L2 already holds — no extra infra, no GCP dependency |
+| In-process | `invalidation.Mem` | single-process fan-out for tests |
+
+```go
+bus := redispubsub.New(rdb, "myapp:invalidations") // rdb is your rueidis.Client
+cache, err := nimbus.NewBuilder[string, User](loadUser).
+    L2(redisstore.New[User](rdb, store.JSON[User]())).
+    Bus(bus).
+    Build()
+```
+
+---
+
 ## When *not* to use this
 
 - A single long-lived instance with plenty of memory: a plain in-process cache (Ristretto, Otter) is simpler.
