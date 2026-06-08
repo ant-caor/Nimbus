@@ -12,10 +12,10 @@ variable "region" {
 variable "service_name" {
   type        = string
   description = "Cloud Run service name (also used to name related resources)."
-  default     = "runcache"
+  default     = "nimbus"
 }
 
 variable "image" {
   type        = string
-  description = "Container image to deploy, e.g. REGION-docker.pkg.dev/PROJECT/REPO/runcache:latest"
+  description = "Container image to deploy, e.g. REGION-docker.pkg.dev/PROJECT/REPO/nimbus:latest"
 }

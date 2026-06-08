@@ -1,12 +1,12 @@
 // This is a separate module so the testcontainers/testify dependency tree never
 // reaches the library's dependents. The library module stays lean.
-module github.com/ant-caor/runcache/test/integration
+module github.com/ant-caor/nimbus/test/integration
 
 go 1.25.0
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.0
-	github.com/ant-caor/runcache v0.0.0
+	github.com/ant-caor/nimbus v0.0.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/rueidis v1.0.53
 	github.com/stretchr/testify v1.11.1
@@ -93,4 +93,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/ant-caor/runcache => ../..
+replace github.com/ant-caor/nimbus => ../..

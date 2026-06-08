@@ -8,8 +8,8 @@ import (
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/metrics"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/metrics"
 )
 
 func TestRegisterReportsStats(t *testing.T) {
@@ -18,7 +18,7 @@ func TestRegisterReportsStats(t *testing.T) {
 	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
 
 	loader := func(_ context.Context, _ string) (int, error) { return 1, nil }
-	c, err := runcache.NewBuilder[string, int](loader).TTL(time.Hour, 0).Build()
+	c, err := nimbus.NewBuilder[string, int](loader).TTL(time.Hour, 0).Build()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,9 +44,9 @@ func TestRegisterReportsStats(t *testing.T) {
 	}
 
 	checks := map[string]int64{
-		"runcache.hits":   1,
-		"runcache.misses": 1,
-		"runcache.loads":  1,
+		"nimbus.hits":   1,
+		"nimbus.misses": 1,
+		"nimbus.loads":  1,
 	}
 	for name, want := range checks {
 		if got := scrapeInt64(t, rm, name); got != want {

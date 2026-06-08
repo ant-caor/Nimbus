@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/nimbus/store"
 )
 
 func benchEntry(v int) store.Entry[int] {

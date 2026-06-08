@@ -1,4 +1,4 @@
-// Command demo is a tiny HTTP service that exercises runcache with an L1 plus a
+// Command demo is a tiny HTTP service that exercises Nimbus with an L1 plus a
 // Redis L2, so you can experiment with cross-instance behavior locally via
 // docker compose. Two instances (svc-a, svc-b) share one Redis.
 package main
@@ -14,10 +14,10 @@ import (
 
 	"github.com/redis/rueidis"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 
 	rdb, err := rueidis.NewClient(rueidis.ClientOption{
 		InitAddress:  []string{redisAddr},
-		DisableCache: true, // runcache owns the in-process cache layer
+		DisableCache: true, // nimbus owns the in-process cache layer
 	})
 	if err != nil {
 		log.Fatalf("connect redis: %v", err)
@@ -35,7 +35,7 @@ func main() {
 	defer rdb.Close()
 
 	l2 := redisstore.New[string](rdb, store.JSON[string]())
-	cache, err := runcache.NewBuilder[string, string](func(_ context.Context, key string) (string, error) {
+	cache, err := nimbus.NewBuilder[string, string](func(_ context.Context, key string) (string, error) {
 		time.Sleep(200 * time.Millisecond) // pretend the origin is slow
 		return fmt.Sprintf("origin(%s) loaded by %s at %s", key, instance, time.Now().Format(time.RFC3339Nano)), nil
 	}).
@@ -85,7 +85,7 @@ func main() {
 		_, _ = w.Write([]byte("ok"))
 	})
 
-	log.Printf("runcache demo %q listening on :%s (redis %s)", instance, port, redisAddr)
+	log.Printf("nimbus demo %q listening on :%s (redis %s)", instance, port, redisAddr)
 	srv := &http.Server{Addr: ":" + port, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	log.Fatal(srv.ListenAndServe())
 }

@@ -8,10 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // TestEndToEndCrossInstanceViaL2 is the end-to-end proof for the current
@@ -26,9 +26,9 @@ func TestEndToEndCrossInstanceViaL2(t *testing.T) {
 		return "v1", nil
 	}
 	prefix := "e2e:" + t.Name() + ":"
-	mk := func() runcache.Cache[string, string] {
+	mk := func() nimbus.Cache[string, string] {
 		l2 := redisstore.New[string](newRedisClient(t), store.JSON[string](), redisstore.WithKeyPrefix(prefix))
-		c, err := runcache.NewBuilder[string, string](loader).
+		c, err := nimbus.NewBuilder[string, string](loader).
 			L1(memory.New[string]()).
 			L2(l2).
 			TTL(time.Minute, 0).

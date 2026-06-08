@@ -1,4 +1,4 @@
-package runcache_test
+package nimbus_test
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ant-caor/runcache"
+	"github.com/ant-caor/nimbus"
 )
 
 // Example shows the simplest use: an L1-only cache with read-through and
@@ -16,7 +16,7 @@ func Example() {
 		return len(key), nil // pretend this is an expensive lookup
 	}
 
-	cache, err := runcache.NewBuilder[string, int](loader).
+	cache, err := nimbus.NewBuilder[string, int](loader).
 		TTL(time.Minute, 0).
 		Build()
 	if err != nil {
@@ -30,13 +30,13 @@ func Example() {
 }
 
 // ExampleErrNotFound shows negative caching: a loader that returns ErrNotFound
-// makes runcache remember the absence, and GetOrLoad reports it as ErrNotFound.
+// makes nimbus remember the absence, and GetOrLoad reports it as ErrNotFound.
 func ExampleErrNotFound() {
 	loader := func(_ context.Context, _ string) (int, error) {
-		return 0, runcache.ErrNotFound // the key genuinely does not exist
+		return 0, nimbus.ErrNotFound // the key genuinely does not exist
 	}
 
-	cache, err := runcache.NewBuilder[string, int](loader).
+	cache, err := nimbus.NewBuilder[string, int](loader).
 		NegativeTTL(time.Minute).
 		Build()
 	if err != nil {
@@ -45,6 +45,6 @@ func ExampleErrNotFound() {
 	defer func() { _ = cache.Close() }()
 
 	_, err = cache.GetOrLoad(context.Background(), "missing")
-	fmt.Println(errors.Is(err, runcache.ErrNotFound))
+	fmt.Println(errors.Is(err, nimbus.ErrNotFound))
 	// Output: true
 }

@@ -1,4 +1,4 @@
-// Package memory is runcache's own in-process L1 store: a sharded LRU with TTL.
+// Package memory is nimbus's own in-process L1 store: a sharded LRU with TTL.
 //
 // It is intentionally hand-written (rather than wrapping Ristretto or Otter) to
 // show the internals, while staying behind the store.Store interface so a
@@ -12,8 +12,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/ant-caor/runcache/internal/clock"
-	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/nimbus/internal/clock"
+	"github.com/ant-caor/nimbus/store"
 )
 
 // node is an intrusive doubly-linked-list element so LRU reordering needs no

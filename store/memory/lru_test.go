@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ant-caor/runcache/internal/clock"
-	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/nimbus/internal/clock"
+	"github.com/ant-caor/nimbus/store"
 )
 
 func entry[V any](v V, ttl time.Duration) store.Entry[V] {

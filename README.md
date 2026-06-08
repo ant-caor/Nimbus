@@ -1,4 +1,4 @@
-# runcache
+# Nimbus
 
 **Cloud Run-first caching for Go.** A fast in-process L1, a shared versioned L2 (the source of truth), and a Pub/Sub invalidation bus that keeps per-instance caches coherent across ephemeral, autoscaling instances.
 
@@ -17,7 +17,7 @@ Naive caching breaks on Cloud Run for three reasons:
 2. **There is no shared memory between instances.** A request lands on any instance, so in-process caches diverge, and because instances are ephemeral you cannot address them individually to invalidate.
 3. **Cost vs. latency is a real tradeoff.** An external cache (Memorystore) gives coherence but adds cost, latency, and a VPC connector; in-memory is free but volatile.
 
-`runcache` handles these tradeoffs so you do not re-implement them in every service.
+Nimbus handles these tradeoffs so you do not re-implement them in every service.
 
 ---
 
@@ -44,7 +44,7 @@ Keys are string-keyed internally (`Store[V]`), with the user's key type `K` livi
 ## Quickstart
 
 ```go
-cache, err := runcache.NewBuilder[string, User](loadUser).
+cache, err := nimbus.NewBuilder[string, User](loadUser).
     L1(memory.New[User]()).               // in-process accelerator
     L2(redisstore.New[User](rdb, store.JSON[User]())). // shared source of truth
     TTL(30*time.Second, 5*time.Minute).   // fresh window + stale-while-revalidate window
@@ -59,13 +59,13 @@ defer cache.Close()
 // Read-through with stampede protection: concurrent misses collapse to one load.
 v, err := cache.GetOrLoad(ctx, "user:42")
 switch {
-case errors.Is(err, runcache.ErrNotFound): // known-absent (negative hit)
+case errors.Is(err, nimbus.ErrNotFound): // known-absent (negative hit)
 case err != nil:                           // transient failure (not cached)
 default:                                    // use v
 }
 ```
 
-The loader signals a missing key by returning `runcache.ErrNotFound`, which triggers negative caching. The builder names the types once; every option is a plain method.
+The loader signals a missing key by returning `nimbus.ErrNotFound`, which triggers negative caching. The builder names the types once; every option is a plain method.
 
 ---
 
@@ -110,7 +110,7 @@ go test -run='^$' -bench=. -benchmem ./...
 
 ## Observability
 
-Import `runcache/metrics` to export cache statistics as OpenTelemetry metrics.
+Import `nimbus/metrics` to export cache statistics as OpenTelemetry metrics.
 It observes `Stats()` through asynchronous instruments, so it adds nothing to the
 hot path, and the core package keeps no OpenTelemetry dependency:
 
@@ -119,7 +119,7 @@ reg, err := metrics.Register(meter, cache) // meter is an otel metric.Meter
 defer reg.Unregister()
 ```
 
-It reports `runcache.hits`, `.stale_hits`, `.misses`, `.loads`, `.load_errors`,
+It reports `nimbus.hits`, `.stale_hits`, `.misses`, `.loads`, `.load_errors`,
 `.negative_hits`, `.refreshes`, `.bus_evicts`, `.evictions`, and `.l1.entries`.
 
 ## Try it locally
@@ -134,16 +134,16 @@ cross-instance bus over Pub/Sub deployed to Cloud Run via Terraform, see
 ## When *not* to use this
 
 - A single long-lived instance with plenty of memory: a plain in-process cache (Ristretto, Otter) is simpler.
-- Reads that must be strongly consistent: `runcache` is eventually consistent across instances by design.
+- Reads that must be strongly consistent: Nimbus is eventually consistent across instances by design.
 - Near-100% write workloads: the machinery is not worth it.
 
-`runcache` is for read-heavy, high-traffic services on autoscaling Cloud Run where cold starts and cross-instance coherence actually bite.
+Nimbus is for read-heavy, high-traffic services on autoscaling Cloud Run where cold starts and cross-instance coherence actually bite.
 
 ---
 
 ## Design notes
 
-The in-memory cache space in Go is well served by [Ristretto](https://github.com/dgraph-io/ristretto) and [Otter](https://github.com/maypok86/otter). `runcache` does not try to out-compete them on raw eviction; its value is the **serverless orchestration layer**: tiering, the versioned fill invariant, cross-instance coherence, and a deployable reference. The L1 is hand-written behind the `store.Store` interface, so a faster engine can be dropped in later.
+The in-memory cache space in Go is well served by [Ristretto](https://github.com/dgraph-io/ristretto) and [Otter](https://github.com/maypok86/otter). Nimbus does not try to out-compete them on raw eviction; its value is the **serverless orchestration layer**: tiering, the versioned fill invariant, cross-instance coherence, and a deployable reference. The L1 is hand-written behind the `store.Store` interface, so a faster engine can be dropped in later.
 
 Integration tests (Redis, and the Pub/Sub emulator) live in a separate module under `test/integration/` so the library's own dependents pull only `rueidis` and `golang.org/x/sync`, never the test infrastructure.
 

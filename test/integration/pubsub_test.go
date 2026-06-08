@@ -10,9 +10,9 @@ import (
 	pubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/invalidation/gcppubsub"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/invalidation/gcppubsub"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // TestCrossInstanceInvalidationViaPubSub is the headline coherence proof: an
@@ -24,13 +24,13 @@ func TestCrossInstanceInvalidationViaPubSub(t *testing.T) {
 	var loads atomic.Int64
 	loader := func(_ context.Context, _ string) (int, error) { return int(loads.Add(1)), nil }
 
-	mk := func() runcache.Cache[string, int] {
+	mk := func() nimbus.Cache[string, int] {
 		client, err := pubsub.NewClient(ctx, pubsubProjectID)
 		require.NoError(t, err)
 		// TTL 0 disables the expiration policy, which the emulator does not support.
 		bus, err := gcppubsub.New(ctx, client, topicID, gcppubsub.WithSubscriptionTTL(0))
 		require.NoError(t, err)
-		c, err := runcache.NewBuilder[string, int](loader).
+		c, err := nimbus.NewBuilder[string, int](loader).
 			L1(memory.New[int]()).
 			Bus(bus).
 			TTL(time.Hour, 0).

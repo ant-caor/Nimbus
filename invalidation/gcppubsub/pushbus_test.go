@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ant-caor/runcache/invalidation"
+	"github.com/ant-caor/nimbus/invalidation"
 )
 
 // TestPushBusWiring verifies the push path end to end without GCP: Subscribe

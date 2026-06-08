@@ -1,4 +1,4 @@
-package runcache
+package nimbus
 
 import (
 	"context"
@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ant-caor/runcache/internal/clock"
+	"github.com/ant-caor/nimbus/internal/clock"
 )
 
 func eventually(d time.Duration, cond func() bool) bool {
