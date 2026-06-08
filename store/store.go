@@ -1,6 +1,6 @@
-// Package store defines the storage contracts for runcache tiers.
+// Package store defines the storage contracts for nimbus tiers.
 //
-// All stores are keyed by string. The public runcache.Cache is generic over a
+// All stores are keyed by string. The public nimbus.Cache is generic over a
 // user key type K, but it maps K to a string exactly once at its boundary and
 // then uses string keys uniformly across L1, L2, and the invalidation bus.
 // That uniformity is what lets an instance evict an entry named by a key it
@@ -22,7 +22,7 @@ import (
 // ErrVersionConflict is returned by SetCAS when the observed version does not
 // match the expected version, meaning a concurrent writer won. The caller must
 // discard its value and re-read rather than install a stale entry.
-var ErrVersionConflict = errors.New("runcache/store: version conflict")
+var ErrVersionConflict = errors.New("nimbus/store: version conflict")
 
 // ForceVersion is the sentinel expected-version that skips the compare-and-swap
 // guard and writes unconditionally. It is used for explicit writes (Set) and

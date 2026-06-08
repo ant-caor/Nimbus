@@ -6,7 +6,7 @@ import "time"
 //
 // Version is minted exclusively by the authoritative L2 store (see
 // VersionedStore). Callers and L1 stores must never invent a Version: doing so
-// breaks the fill invariant that runcache relies on for cross-instance
+// breaks the fill invariant that nimbus relies on for cross-instance
 // coherence.
 type Entry[V any] struct {
 	Value      V

@@ -1,4 +1,4 @@
-// Package gcppubsub implements the runcache invalidation bus over Google Cloud
+// Package gcppubsub implements the nimbus invalidation bus over Google Cloud
 // Pub/Sub (cloud.google.com/go/pubsub/v2).
 //
 // Each instance publishes evictions to a shared topic and subscribes with its
@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
-	"github.com/ant-caor/runcache/invalidation"
+	"github.com/ant-caor/nimbus/invalidation"
 )
 
 type config struct {

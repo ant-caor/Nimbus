@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/ant-caor/runcache/invalidation"
+	"github.com/ant-caor/nimbus/invalidation"
 )
 
 // pushEnvelope is the JSON body Pub/Sub delivers to a push endpoint. The

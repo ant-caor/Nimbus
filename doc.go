@@ -1,4 +1,4 @@
-// Package runcache is a Cloud Run-first cache for Go.
+// Package nimbus is a Cloud Run-first cache for Go.
 //
 // It combines a fast in-process L1, a shared versioned L2 (the source of
 // truth), and a Pub/Sub invalidation bus that keeps per-instance caches
@@ -9,4 +9,4 @@
 // atomically against concurrent invalidations. The bus is a latency
 // optimization, not the sole coherence mechanism; an instance that misses a
 // broadcast still converges on its next L2 read. See DESIGN.md for details.
-package runcache
+package nimbus
