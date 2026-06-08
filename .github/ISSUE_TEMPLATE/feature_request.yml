@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an enhancement or new capability for Nimbus
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea! For notable changes (public API, new packages,
+        breaking changes) this issue helps surface the design before code is written.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case and the pain today, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like Nimbus to do? API sketches welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other designs you weighed.
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Fit
+      options:
+        - label: This fits Nimbus's scope (Cloud Run-first / serverless multi-tier caching)
+        - label: I'm willing to help implement it

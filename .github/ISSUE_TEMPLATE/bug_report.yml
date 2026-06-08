@@ -1,0 +1,56 @@
+name: Bug report
+description: Report a problem with Nimbus
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. Please search existing issues first.
+        For security vulnerabilities, do **not** open an issue — see SECURITY.md.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected instead.
+      placeholder: When I call GetOrLoad concurrently after an Invalidate, ...
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Ideally a minimal Go snippet or test that shows the problem.
+      render: go
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Nimbus version / commit
+      description: Tag (e.g. v0.1.0) or commit SHA.
+    validations:
+      required: true
+  - type: dropdown
+    id: tiers
+    attributes:
+      label: Which tier(s) are involved?
+      multiple: true
+      options:
+        - L1 (in-process)
+        - L2 (Redis)
+        - Invalidation bus (GCP Pub/Sub)
+        - Invalidation bus (Redis Pub/Sub)
+        - Metrics
+        - Other / not sure
+  - type: input
+    id: go-version
+    attributes:
+      label: Go version
+      description: Output of `go version`.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      render: shell

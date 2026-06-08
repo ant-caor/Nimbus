@@ -1,0 +1,7 @@
+# Code owners are requested for review automatically on every pull request.
+# See https://docs.github.com/articles/about-code-owners
+#
+# Order matters: the last matching pattern takes precedence.
+
+# Default owner for everything in the repo.
+*       @ant-caor
