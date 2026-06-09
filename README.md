@@ -2,6 +2,10 @@
 
 **Cloud Run-first caching for Go.** A fast in-process L1, a shared versioned L2 (the source of truth), and a Pub/Sub invalidation bus that keeps per-instance caches coherent across ephemeral, autoscaling instances.
 
+[![CI](https://github.com/ant-caor/nimbus/actions/workflows/ci.yml/badge.svg)](https://github.com/ant-caor/nimbus/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/ant-caor/nimbus.svg)](https://pkg.go.dev/github.com/ant-caor/nimbus)
+[![Go Report Card](https://goreportcard.com/badge/github.com/ant-caor/nimbus)](https://goreportcard.com/report/github.com/ant-caor/nimbus)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ant-caor/nimbus/badge)](https://scorecard.dev/viewer/?uri=github.com/ant-caor/nimbus)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25+-00ADD8.svg)](go.mod)
 
@@ -172,6 +176,26 @@ A deeper write-up of the coherence protocol lives in [`DESIGN.md`](DESIGN.md).
 
 ---
 
+## Versioning and compatibility
+
+Nimbus follows [Semantic Versioning](https://semver.org/). **While the project is
+pre-1.0, minor releases (`0.x`) may contain breaking changes; patch releases
+never do.** Breaking changes are called out in [`CHANGELOG.md`](CHANGELOG.md) with
+a migration note. After 1.0, the public API of the root package follows the
+standard Go compatibility promise within a major version.
+
+- **Supported Go:** the latest 1.25 patch. The floor (Go 1.25) is set by a
+  transitive `rueidis` requirement, not by choice.
+- **Module path:** `github.com/ant-caor/nimbus`. A future v2+ would use the
+  `/v2` import-path suffix per [Go module versioning](https://go.dev/ref/mod#major-version-suffixes).
+- **Scope of the promise:** exported symbols of the root package and documented
+  subpackages. Anything under `internal/` is not part of the public API.
+
+The release process is documented in [`RELEASING.md`](RELEASING.md), and security
+reporting in [`SECURITY.md`](SECURITY.md).
+
+---
+
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
