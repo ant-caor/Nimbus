@@ -34,10 +34,30 @@ curl "http://localhost:8082/get?key=hello"
 curl "http://localhost:8081/stats"
 ```
 
-When the Pub/Sub invalidation bus lands, this compose file will also start the
-Pub/Sub emulator, and `POST /invalidate` on one instance will evict the entry on
-the other within milliseconds. Until then, a non-receiving instance converges on
-its next L2 read (bounded by its L1 fresh TTL).
+## Cross-instance invalidation over the Pub/Sub bus
+
+This compose file also starts the **Pub/Sub emulator**, and both instances wire
+the pull-based `gcppubsub` bus (each with its own subscription, so a broadcast
+fans out to everyone). Watch one instance evict the other's L1 in milliseconds:
+
+```sh
+# Cache the same key on both instances (both now hold it in their L1).
+curl "http://localhost:8081/get?key=k"
+curl "http://localhost:8082/get?key=k"
+
+# Invalidate on A -> the bus broadcasts -> B evicts its L1 entry.
+curl -X POST "http://localhost:8081/invalidate?key=k"
+
+# B's bus_evicts counter went up, and the next read reloads from the origin.
+curl "http://localhost:8082/stats"
+curl "http://localhost:8082/get?key=k"
+```
+
+`POST /set` publishes an invalidation the same way. Without the bus (e.g.
+`go run ./demo/local` with no `PUBSUB_EMULATOR_HOST`), a non-receiving instance
+instead converges on its next L2 read, bounded by its L1 fresh TTL.
+
+> The emulator image (`cloud-sdk:emulators`) is ~1 GB; the first `up` pulls it.
 
 ## Why docker compose and not Terraform here
 
