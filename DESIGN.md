@@ -163,6 +163,24 @@ Subscriptions are torn down when the subscriber stops (wire `Close` to SIGTERM
 on Cloud Run); the subscription expiration policy is the backstop for instances
 that are hard-killed. Note Pub/Sub's minimum expiration is one day, not one hour.
 
+### Transports
+
+The bus is an interface (`invalidation.Bus`), so the transport is pluggable:
+
+| Transport | Package | Delivery | When |
+|---|---|---|---|
+| In-process | `invalidation.Mem` | fan-out within one process | unit tests, single-instance |
+| GCP Pub/Sub (pull) | `invalidation/gcppubsub` `New` | true fan-out | always-on CPU |
+| GCP Pub/Sub (push) | `invalidation/gcppubsub` `NewPush` | load-balanced | request-only-CPU Cloud Run |
+| Redis Pub/Sub | `invalidation/redispubsub` | true fan-out | Redis/Memorystore already in use |
+
+The Redis transport is the lowest-friction one: it reuses the very client the
+Redis L2 already holds, so it adds no new infrastructure and no GCP dependency —
+fitting for serverless platforms beyond Cloud Run. Redis Pub/Sub is
+fire-and-forget (no per-instance subscription, no expiration policy to manage):
+an instance not connected at publish time misses the event and, as always,
+converges on its next L2 read.
+
 ## Consistency guarantees and non-goals
 
 - **Eventually consistent across L1.** After a write/invalidation, instances
