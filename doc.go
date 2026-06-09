@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package nimbus is a Cloud Run-first cache for Go.
 //
 // It combines a fast in-process L1, a shared versioned L2 (the source of

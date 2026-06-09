@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package invalidation defines the cross-instance eviction bus contracts.
 //
 // Events are invalidation-only and never carry cached values. That invariant
