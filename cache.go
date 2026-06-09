@@ -210,7 +210,24 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 	val, err := c.loader(ctx, key)
 	now = c.clk.Now()
 	if errors.Is(err, ErrNotFound) {
-		_ = c.l1.Set(ctx, ks, c.negativeEntry(now, expect))
+		// Fill invariant for negatives: only cache "not found" if L2 is still at
+		// `expect`. CompareAndDelete writes a versioned tombstone iff the version
+		// is unchanged — versions are monotonic and `expect` was read before the
+		// loader, so "version >= current" holds exactly when nothing moved. If a
+		// writer won the race while the loader ran, the CAS fails and we serve the
+		// winner instead of caching a now-stale negative.
+		newV, deleted, derr := c.l2.CompareAndDelete(ctx, ks, expect)
+		if derr != nil {
+			return zero, derr
+		}
+		if !deleted {
+			if e2, ok2, _ := c.l2.Load(ctx, ks); ok2 {
+				_ = c.l1.Set(ctx, ks, e2)
+				return e2.Value, nil
+			}
+			return zero, ErrNotFound
+		}
+		_ = c.l1.Set(ctx, ks, c.negativeEntry(now, newV))
 		return zero, ErrNotFound
 	}
 	if err != nil {
