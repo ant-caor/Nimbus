@@ -22,6 +22,3 @@ func (s *Group[V]) Do(key string, fn func() (V, error)) (v V, shared bool, err e
 	}
 	return res.(V), sh, nil
 }
-
-// Forget drops key's in-flight tracking so the next Do re-executes fn.
-func (s *Group[V]) Forget(key string) { s.g.Forget(key) }

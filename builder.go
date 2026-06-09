@@ -66,7 +66,10 @@ func (b *Builder[K, V]) TTL(fresh, staleWindow time.Duration) *Builder[K, V] {
 // expiry. frac must be in [0, 1].
 func (b *Builder[K, V]) Jitter(frac float64) *Builder[K, V] { b.cfg.jitter = frac; return b }
 
-// NegativeTTL sets how long a known-absent key is negatively cached.
+// NegativeTTL sets how long a known-absent key is negatively cached. If unset,
+// it falls back to the fresh TTL; if that is also unset, negative entries
+// persist until evicted. Negative entries are L1-only and converge across
+// instances via the bus or this TTL (not via an L2 read), so keep it modest.
 func (b *Builder[K, V]) NegativeTTL(d time.Duration) *Builder[K, V] { b.cfg.negTTL = d; return b }
 
 // MaxTTL caps the absolute lifetime of an entry so stale-while-revalidate
@@ -159,15 +162,18 @@ func (b *Builder[K, V]) Build() (Cache[K, V], error) {
 		tags:        make(map[string]map[string]struct{}),
 	}
 
-	// Start the cross-instance invalidation subscriber. For the no-op bus this
-	// goroutine simply blocks until Close cancels it.
-	subCtx, cancel := context.WithCancel(context.Background())
-	c.busCancel = cancel
-	c.busWG.Add(1)
-	go func() {
-		defer c.busWG.Done()
-		_ = c.bus.Subscribe(subCtx, c.onEvent)
-	}()
+	// Start the cross-instance invalidation subscriber, unless the bus is the
+	// no-op bus: it has nothing to deliver, so there is no point spinning a
+	// goroutine that would only block until Close.
+	if _, isNop := cfg.bus.(invalidation.Nop); !isNop {
+		subCtx, cancel := context.WithCancel(context.Background())
+		c.busCancel = cancel
+		c.busWG.Add(1)
+		go func() {
+			defer c.busWG.Done()
+			_ = c.bus.Subscribe(subCtx, c.onEvent)
+		}()
+	}
 
 	return c, nil
 }

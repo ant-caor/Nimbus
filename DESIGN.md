@@ -127,10 +127,13 @@ fresh TTL desynchronizes expiries to avoid an avalanche.
 
 How the revalidation runs matters on Cloud Run:
 
-- **Request-bound (default)** runs the refresh while a request holds CPU. Under
-  the default request-only CPU allocation, CPU is throttled to near-zero between
-  requests, so this is the safe choice: it makes progress while requests are in
-  flight and simply waits otherwise.
+- **Request-bound (default)** runs the refresh on a short-lived detached
+  goroutine, with no worker pool. Cloud Run allocates CPU per instance only while
+  that instance is processing requests, so this refresh makes progress whenever
+  the instance is handling any request and may stall while the instance is idle.
+  It is best-effort (bounded by `RefreshTimeout`), not a guarantee of completion;
+  if it stalls, the next request re-triggers a still-stale entry. This is the
+  honest best you can do under request-only CPU.
 - **Background** runs on a worker pool off the request path. This **requires
   always-on CPU** (instance-based billing); otherwise the workers stall between
   requests. It is opt-in and documented as such.
@@ -166,6 +169,13 @@ that are hard-killed. Note Pub/Sub's minimum expiration is one day, not one hour
   converge within the bus latency (push: the receiving instance immediately,
   others on next L2 read; no bus: within the L1 fresh TTL).
 - **Bounded staleness**, capped by the fresh TTL (and `MaxTTL`).
+- **Negative entries converge differently.** A negative (known-absent) entry is
+  L1-only, and a fresh negative hit short-circuits before any L2 read, so the
+  "converge on next L2 read" property does NOT apply to it. A negative entry
+  converges only via a bus eviction or its negative TTL. With push delivery
+  (one instance per message), an instance that misses the broadcast can keep
+  reporting "not found" for a newly-created key until its `NegativeTTL` elapses,
+  so keep `NegativeTTL` modest. Pull delivery (fan-out) evicts every instance.
 - **Not strongly consistent on read.** If you need read-your-writes across all
   instances synchronously, runcache is the wrong tool.
 - **Bus events are invalidation-only.** Putting values on the bus would make

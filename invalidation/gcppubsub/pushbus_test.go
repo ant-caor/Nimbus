@@ -51,3 +51,12 @@ func TestPushBusWiring(t *testing.T) {
 		t.Fatal("push handler did not dispatch to the registered handler")
 	}
 }
+
+// TestPushBusZeroValuePublishNoPanic guards the nil-publisher path: a
+// receive-only zero-value PushBus must not panic on Publish.
+func TestPushBusZeroValuePublishNoPanic(t *testing.T) {
+	var pb PushBus
+	if err := pb.Publish(context.Background(), invalidation.Event{ID: "x"}); err != nil {
+		t.Fatalf("zero-value Publish should be a no-op, got %v", err)
+	}
+}

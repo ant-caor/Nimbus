@@ -82,5 +82,6 @@ func newRedisClient(t *testing.T) rueidis.Client {
 	if err != nil {
 		t.Fatalf("new rueidis client: %v", err)
 	}
+	t.Cleanup(c.Close) // redisstore.Store.Close is a no-op; the caller owns the client
 	return c
 }

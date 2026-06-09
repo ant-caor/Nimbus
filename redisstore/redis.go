@@ -11,6 +11,7 @@ package redisstore
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -104,6 +105,9 @@ func (s *Store[V]) read(ctx context.Context, key string) (store.Entry[V], bool, 
 	arr, err := s.client.Do(ctx, cmd).ToArray()
 	if err != nil {
 		return store.Entry[V]{}, false, err
+	}
+	if len(arr) < 6 {
+		return store.Entry[V]{}, false, fmt.Errorf("redisstore: unexpected HMGET reply length %d", len(arr))
 	}
 	verMsg := arr[0]
 	if verMsg.IsNil() {
@@ -211,22 +215,27 @@ func (s *Store[V]) DeleteByTag(ctx context.Context, tag string) ([]string, error
 	if err != nil {
 		return nil, err
 	}
+	processed := make([]string, 0, len(members))
 	for _, key := range members {
 		if _, _, err := s.CompareAndDelete(ctx, key, store.ForceVersion); err != nil {
-			return members, err
+			return processed, err // caller broadcasts what we managed to tombstone
+		}
+		processed = append(processed, key)
+	}
+	// Remove only the members we processed, not the whole set: a key SADDed
+	// concurrently (after SMEMBERS) must survive so a later InvalidateTag finds it.
+	if len(processed) > 0 {
+		if err := s.client.Do(ctx, s.client.B().Srem().Key(s.t(tag)).Member(processed...).Build()).Error(); err != nil {
+			return processed, err
 		}
 	}
-	if err := s.client.Do(ctx, s.client.B().Del().Key(s.t(tag)).Build()).Error(); err != nil {
-		return members, err
-	}
-	return members, nil
+	return processed, nil
 }
 
-// Close implements store.Store. It closes the underlying client.
-func (s *Store[V]) Close() error {
-	s.client.Close()
-	return nil
-}
+// Close is a no-op. The caller owns the rueidis client passed to New and is
+// responsible for closing it, consistent with the rest of runcache, which never
+// closes resources it did not create.
+func (s *Store[V]) Close() error { return nil }
 
 func (s *Store[V]) addTags(ctx context.Context, key string, tags []string) error {
 	for _, tag := range tags {
@@ -275,6 +284,9 @@ func parseUnixNano(m rueidis.RedisMessage) time.Time {
 }
 
 func parseVerFlag(res []rueidis.RedisMessage) (uint64, bool, error) {
+	if len(res) < 2 {
+		return 0, false, fmt.Errorf("redisstore: unexpected script reply length %d", len(res))
+	}
 	verStr, err := res[0].ToString()
 	if err != nil {
 		return 0, false, err
