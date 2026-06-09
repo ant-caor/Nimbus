@@ -46,7 +46,7 @@ resource "google_pubsub_topic" "inval" {
 # Runtime identity for the service.
 resource "google_service_account" "run" {
   account_id   = "${var.service_name}-run"
-  display_name = "runcache Cloud Run service"
+  display_name = "nimbus Cloud Run service"
 }
 
 # The service publishes invalidations to the topic.
@@ -100,7 +100,7 @@ resource "google_cloud_run_v2_service" "svc" {
 # Identity Pub/Sub uses to authenticate push requests to the service (OIDC).
 resource "google_service_account" "push" {
   account_id   = "${var.service_name}-push"
-  display_name = "runcache Pub/Sub push"
+  display_name = "nimbus Pub/Sub push"
 }
 
 # Only the push identity may invoke the service (the endpoint is not public).

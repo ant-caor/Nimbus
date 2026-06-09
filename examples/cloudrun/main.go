@@ -1,4 +1,4 @@
-// Command cloudrun is a deployable runcache service for Google Cloud Run: an
+// Command cloudrun is a deployable Nimbus service for Google Cloud Run: an
 // in-process L1, a Memorystore (Redis) L2, and a Pub/Sub push invalidation bus.
 // The Terraform in ./terraform provisions everything. See README.md.
 package main
@@ -17,18 +17,18 @@ import (
 	pubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/redis/rueidis"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/invalidation/gcppubsub"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/invalidation/gcppubsub"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 func main() {
 	ctx := context.Background()
 	projectID := mustEnv("PROJECT_ID")
 	redisAddr := mustEnv("REDIS_ADDR")
-	topic := envOr("PUBSUB_TOPIC", "runcache-invalidation")
+	topic := envOr("PUBSUB_TOPIC", "nimbus-invalidation")
 	port := envOr("PORT", "8080")
 
 	rdb, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{redisAddr}, DisableCache: true})
@@ -48,13 +48,13 @@ func main() {
 		log.Fatalf("bus: %v", err)
 	}
 
-	cache, err := runcache.NewBuilder[string, string](loadItem).
+	cache, err := nimbus.NewBuilder[string, string](loadItem).
 		L1(memory.New[string]()).
 		L2(redisstore.New[string](rdb, store.JSON[string]())).
 		Bus(bus).
 		TTL(30*time.Second, 5*time.Minute).
 		Jitter(0.1).
-		RefreshMode(runcache.RefreshRequestBound). // safe under request-only CPU
+		RefreshMode(nimbus.RefreshRequestBound). // safe under request-only CPU
 		Build()
 	if err != nil {
 		log.Fatalf("cache: %v", err)
@@ -65,7 +65,7 @@ func main() {
 	mux.HandleFunc("GET /items/{id}", func(w http.ResponseWriter, r *http.Request) {
 		v, err := cache.GetOrLoad(r.Context(), r.PathValue("id"))
 		switch {
-		case errors.Is(err, runcache.ErrNotFound):
+		case errors.Is(err, nimbus.ErrNotFound):
 			http.NotFound(w, r)
 		case err != nil:
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -116,14 +116,14 @@ func main() {
 		_ = cache.Close()
 	}()
 
-	log.Printf("runcache cloudrun listening on :%s", port)
+	log.Printf("nimbus cloudrun listening on :%s", port)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }
 
 // loadItem is a placeholder origin loader. Replace it with your real backend
-// (database, upstream API). Return runcache.ErrNotFound for a missing item to
+// (database, upstream API). Return nimbus.ErrNotFound for a missing item to
 // enable negative caching.
 func loadItem(_ context.Context, id string) (string, error) {
 	time.Sleep(100 * time.Millisecond) // pretend the origin is slow

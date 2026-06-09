@@ -1,6 +1,6 @@
-# runcache design
+# Nimbus design
 
-How runcache stays coherent across ephemeral, autoscaling Cloud Run instances,
+How Nimbus stays coherent across ephemeral, autoscaling Cloud Run instances,
 and the tradeoffs behind it.
 
 ## The problem
@@ -18,7 +18,7 @@ scale to zero, and share nothing. That breaks the usual caching assumptions:
   but adds a network hop, a VPC connector or Direct VPC Egress, and a standing
   bill. In-memory is free but volatile.
 
-runcache is the orchestration layer over these tradeoffs.
+Nimbus is the orchestration layer over these tradeoffs.
 
 ## Architecture
 
@@ -55,7 +55,7 @@ Three tiers and one rule:
   concurrency. It is deliberately behind the `store.Store` interface so a faster
   engine (Ristretto, Otter) can replace it without touching the cache.
 - **L2** (`redisstore`, over rueidis): the shared, versioned source of truth.
-  Client-side caching is disabled; runcache owns the in-process layer.
+  Client-side caching is disabled; Nimbus owns the in-process layer.
 - **Bus** (`invalidation` + `invalidation/gcppubsub`): broadcasts evictions so
   L1 caches converge in milliseconds rather than at L1 TTL.
 
@@ -77,7 +77,7 @@ is the **fill-after-invalidate race**:
    it: the only invalidation that would have caught it already fired and found
    nothing. B serves stale until its TTL expires.
 
-runcache closes this with the **fill invariant**:
+Nimbus closes this with the **fill invariant**:
 
 > No value (positive, negative, or an explicit `Set`) enters L1 except stamped
 > with a version minted by L2, decided atomically against concurrent
@@ -87,7 +87,7 @@ runcache closes this with the **fill invariant**:
 Concretely, a fill reads L2's current version `expect`, runs the loader, then
 writes with `SetCAS(key, val, expect)`. If anything bumped the version in
 between (an invalidation, another writer), the CAS fails and the loaded value is
-thrown away; runcache re-reads L2 and serves the winner. The race is closed at
+thrown away; Nimbus re-reads L2 and serves the winner. The race is closed at
 the only place a value can enter the cache.
 
 This is proven by `TestFillInvariantUnderInvalidate`: it blocks a loader
@@ -177,7 +177,7 @@ that are hard-killed. Note Pub/Sub's minimum expiration is one day, not one hour
   reporting "not found" for a newly-created key until its `NegativeTTL` elapses,
   so keep `NegativeTTL` modest. Pull delivery (fan-out) evicts every instance.
 - **Not strongly consistent on read.** If you need read-your-writes across all
-  instances synchronously, runcache is the wrong tool.
+  instances synchronously, Nimbus is the wrong tool.
 - **Bus events are invalidation-only.** Putting values on the bus would make
   ordering significant and break the order-independence guarantee; it is a
   deliberate invariant.

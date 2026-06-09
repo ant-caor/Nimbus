@@ -1,5 +1,5 @@
 # Built from the repo root so the whole module is in context:
-#   docker build -f examples/cloudrun/Dockerfile -t runcache-cloudrun .
+#   docker build -f examples/cloudrun/Dockerfile -t nimbus-cloudrun .
 FROM golang:1.25 AS build
 WORKDIR /src
 COPY go.mod go.sum ./

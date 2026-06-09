@@ -1,10 +1,10 @@
-# Contributing to runcache
+# Contributing to Nimbus
 
-Thanks for your interest. runcache is in early development; issues and PRs are welcome.
+Thanks for your interest. Nimbus is in early development; issues and PRs are welcome.
 
 ## Layout
 
-- The library lives in the root module (`github.com/ant-caor/runcache`). Its only
+- The library lives in the root module (`github.com/ant-caor/nimbus`). Its only
   runtime dependencies are `rueidis` (for the Redis L2) and `golang.org/x/sync`.
 - Integration tests live in a **separate module** under `test/integration/` so the
   testcontainers / Pub/Sub-emulator dependency tree never reaches the library's

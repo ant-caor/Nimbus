@@ -1,4 +1,4 @@
-package runcache
+package nimbus
 
 import (
 	"context"
@@ -10,11 +10,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ant-caor/runcache/internal/clock"
-	"github.com/ant-caor/runcache/internal/singleflight"
-	"github.com/ant-caor/runcache/invalidation"
-	"github.com/ant-caor/runcache/refresh"
-	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/nimbus/internal/clock"
+	"github.com/ant-caor/nimbus/internal/singleflight"
+	"github.com/ant-caor/nimbus/invalidation"
+	"github.com/ant-caor/nimbus/refresh"
+	"github.com/ant-caor/nimbus/store"
 )
 
 // noExpiry is the fresh window used when no TTL is configured: the entry stays

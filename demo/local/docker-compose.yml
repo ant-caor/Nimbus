@@ -1,4 +1,4 @@
-name: runcache-demo
+name: nimbus-demo
 
 # Two service instances share one Redis, mirroring multiple Cloud Run instances
 # behind one Memorystore. Use it to watch cross-instance behavior locally.

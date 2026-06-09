@@ -1,4 +1,4 @@
-package runcache
+package nimbus
 
 import (
 	"context"
@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ant-caor/runcache/internal/clock"
-	"github.com/ant-caor/runcache/invalidation"
-	"github.com/ant-caor/runcache/refresh"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus/internal/clock"
+	"github.com/ant-caor/nimbus/invalidation"
+	"github.com/ant-caor/nimbus/refresh"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // Builder constructs a Cache. The user names the key and value types once, on
@@ -105,13 +105,13 @@ func (b *Builder[K, V]) KeyString(fn func(K) string) *Builder[K, V] { b.cfg.keyS
 func (b *Builder[K, V]) Build() (Cache[K, V], error) {
 	cfg := b.cfg
 	if cfg.loader == nil {
-		return nil, errors.New("runcache: a loader is required")
+		return nil, errors.New("nimbus: a loader is required")
 	}
 	if cfg.jitter < 0 || cfg.jitter > 1 {
-		return nil, fmt.Errorf("runcache: jitter must be in [0,1], got %v", cfg.jitter)
+		return nil, fmt.Errorf("nimbus: jitter must be in [0,1], got %v", cfg.jitter)
 	}
 	if cfg.fresh < 0 || cfg.staleWindow < 0 || cfg.negTTL < 0 || cfg.maxTTL < 0 {
-		return nil, errors.New("runcache: durations must not be negative")
+		return nil, errors.New("nimbus: durations must not be negative")
 	}
 	if cfg.clk == nil {
 		cfg.clk = clock.System{}

@@ -1,10 +1,10 @@
-// Package redisstore is runcache's shared, authoritative L2 tier, backed by
+// Package redisstore is nimbus's shared, authoritative L2 tier, backed by
 // Redis or Memorystore via rueidis.
 //
 // It is the single source of versions: each key carries a monotonic version
 // minted only here, inside Lua scripts, so the fill invariant holds. Entries
 // are hashes; an invalidation leaves a versioned tombstone that gates slower
-// in-flight fills. Client-side caching is deliberately disabled: runcache owns
+// in-flight fills. Client-side caching is deliberately disabled: nimbus owns
 // the in-process L1, and a second, independently-invalidated cache layer in the
 // Redis client would only fight it.
 package redisstore
@@ -17,7 +17,7 @@ import (
 
 	"github.com/redis/rueidis"
 
-	"github.com/ant-caor/runcache/store"
+	"github.com/ant-caor/nimbus/store"
 )
 
 // setCAS mints the next version and writes a live value, guarded by an expected
@@ -82,7 +82,7 @@ type Store[V any] struct {
 }
 
 // New builds an L2 store over the given rueidis client. The client should be
-// created with DisableCache: true; runcache owns the in-process cache layer.
+// created with DisableCache: true; nimbus owns the in-process cache layer.
 func New[V any](client rueidis.Client, codec store.Codec[V], opts ...Option) *Store[V] {
 	cfg := config{keyPrefix: "rc:k:", tagPrefix: "rc:t:", tombstoneTTL: 60 * time.Second, tagTTL: 24 * time.Hour}
 	for _, o := range opts {
@@ -233,7 +233,7 @@ func (s *Store[V]) DeleteByTag(ctx context.Context, tag string) ([]string, error
 }
 
 // Close is a no-op. The caller owns the rueidis client passed to New and is
-// responsible for closing it, consistent with the rest of runcache, which never
+// responsible for closing it, consistent with the rest of nimbus, which never
 // closes resources it did not create.
 func (s *Store[V]) Close() error { return nil }
 

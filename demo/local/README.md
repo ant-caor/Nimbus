@@ -1,4 +1,4 @@
-# runcache local demo
+# Nimbus local demo
 
 Two cache instances (`svc-a`, `svc-b`) sharing one Redis, the way multiple Cloud
 Run instances share one Memorystore. Use it to see the L1/L2 behavior on your

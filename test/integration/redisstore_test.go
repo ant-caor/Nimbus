@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 func newL2(t *testing.T) *redisstore.Store[string] {
@@ -81,7 +81,7 @@ func TestFillInvariantUnderInvalidate(t *testing.T) {
 		<-gate // hold the fill open
 		return "stale-value", nil
 	}
-	c, err := runcache.NewBuilder[string, string](loader).
+	c, err := nimbus.NewBuilder[string, string](loader).
 		L1(memory.New[string]()).
 		L2(l2).
 		TTL(time.Minute, 0).
@@ -107,7 +107,7 @@ func TestFillInvariantUnderInvalidate(t *testing.T) {
 
 	close(gate) // let the loader return; its SetCAS(expect=0) must now conflict
 	r := <-resCh
-	require.ErrorIs(t, r.err, runcache.ErrNotFound, "stale value must not be installed after invalidation")
+	require.ErrorIs(t, r.err, nimbus.ErrNotFound, "stale value must not be installed after invalidation")
 
 	// The stale value must not be observable afterward either.
 	_, ok, err := c.Get(ctx, "k")
@@ -125,9 +125,9 @@ func TestTwoInstancesShareL2(t *testing.T) {
 		return "shared", nil
 	}
 	prefix := "share:" + t.Name() + ":"
-	mk := func() runcache.Cache[string, string] {
+	mk := func() nimbus.Cache[string, string] {
 		l2 := redisstore.New[string](newRedisClient(t), store.JSON[string](), redisstore.WithKeyPrefix(prefix))
-		c, err := runcache.NewBuilder[string, string](loader).
+		c, err := nimbus.NewBuilder[string, string](loader).
 			L1(memory.New[string]()).
 			L2(l2).
 			TTL(time.Minute, 0).

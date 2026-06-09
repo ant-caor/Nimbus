@@ -1,4 +1,4 @@
-// Command basic is the smallest runcache example: an L1-only cache with
+// Command basic is the smallest Nimbus example: an L1-only cache with
 // stampede protection. No Redis, no Pub/Sub, no Docker required.
 package main
 
@@ -8,18 +8,18 @@ import (
 	"log"
 	"time"
 
-	"github.com/ant-caor/runcache"
+	"github.com/ant-caor/nimbus"
 )
 
 func main() {
-	// A slow "backend" the cache shields. Returning runcache.ErrNotFound would
+	// A slow "backend" the cache shields. Returning nimbus.ErrNotFound would
 	// negatively cache a key; here every key resolves.
 	loader := func(_ context.Context, id string) (string, error) {
 		time.Sleep(50 * time.Millisecond)
 		return "value-for-" + id, nil
 	}
 
-	cache, err := runcache.NewBuilder[string, string](loader).
+	cache, err := nimbus.NewBuilder[string, string](loader).
 		TTL(time.Minute, 0).
 		Build()
 	if err != nil {
