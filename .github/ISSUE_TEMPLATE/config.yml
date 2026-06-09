@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question / usage help
+    url: https://github.com/ant-caor/nimbus/discussions
+    about: Ask how-to and usage questions in Discussions.
+  - name: Security vulnerability
+    url: https://github.com/ant-caor/nimbus/security/advisories/new
+    about: Report security issues privately. Do not open a public issue.

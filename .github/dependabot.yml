@@ -1,0 +1,36 @@
+# Keep dependencies and GitHub Actions up to date.
+# https://docs.github.com/code-security/dependabot/dependabot-version-updates
+version: 2
+updates:
+  # Library module (root).
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  # Integration test module (separate go.mod).
+  - package-ecosystem: gomod
+    directory: "/test/integration"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-test-dependencies:
+        patterns:
+          - "*"
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
