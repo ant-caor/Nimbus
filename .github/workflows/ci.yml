@@ -5,16 +5,24 @@ on:
     branches: [main]
   pull_request:
 
+# Least privilege by default; jobs that need more raise it locally.
 permissions:
   contents: read
 
 jobs:
   test:
     name: test + vet + fmt (race)
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Floor is Go 1.25 (set by rueidis), so there is one supported Go line
+        # for now; the OS matrix is the meaningful axis. Add windows / a newer
+        # Go line here when relevant.
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.25.x"
           cache: true
@@ -22,8 +30,15 @@ jobs:
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - name: vet
         run: go vet ./...
-      - name: test (race)
-        run: go test -race ./...
+      - name: test (race + coverage)
+        run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
+      - name: upload coverage
+        if: matrix.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
+        with:
+          files: ./coverage.out
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
 
   lint:
     name: golangci-lint
@@ -32,21 +47,42 @@ jobs:
       matrix:
         dir: [".", "test/integration"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.25.x"
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # v9.2.1
         with:
           version: latest
           working-directory: ${{ matrix.dir }}
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.x"
+          cache: true
+      # Scan the library module (what ships to users); test-only deps live in a
+      # separate module and are out of scope for what consumers pull in.
+      - name: govulncheck
+        env:
+          # Pin the patched toolchain so the stdlib scan reflects fixes already
+          # released (e.g. GO-2026-5039 in net/textproto, fixed in go1.25.11).
+          # Fetched from go.dev directly, independent of the setup-go manifest.
+          GOTOOLCHAIN: go1.25.11
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          govulncheck ./...
 
   bench:
     name: benchmarks (smoke)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.25.x"
           cache: true
@@ -57,8 +93,8 @@ jobs:
     name: integration (Redis + Pub/Sub emulator)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.25.x"
           cache: true
@@ -66,3 +102,9 @@ jobs:
       - name: integration tests
         working-directory: test/integration
         run: go test -count=1 -timeout=15m ./...
+
+  # NOTE: a dependency-review job (actions/dependency-review-action) was omitted
+  # because the GitHub Dependency Review API requires GitHub Advanced Security on
+  # this repository. Supply-chain coverage is instead provided by govulncheck
+  # (above), Dependabot (.github/dependabot.yml), and OpenSSF Scorecard. Re-add
+  # the job once Advanced Security / the Dependency Review API is available.
