@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package store defines the storage contracts for nimbus tiers.
 //
 // All stores are keyed by string. The public nimbus.Cache is generic over a

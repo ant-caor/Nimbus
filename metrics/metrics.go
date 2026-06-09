@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package metrics exports nimbus statistics as OpenTelemetry metrics.
 //
 // It observes the cache's Stats() snapshot through asynchronous instruments, so

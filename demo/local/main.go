@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Command demo is a tiny HTTP service that exercises Nimbus with an L1 plus a
 // Redis L2, so you can experiment with cross-instance behavior locally via
 // docker compose. Two instances (svc-a, svc-b) share one Redis.

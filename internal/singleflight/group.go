@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package singleflight is a thin generic wrapper over
 // golang.org/x/sync/singleflight. It collapses concurrent calls that share the
 // same key into a single execution whose result is shared with all callers,

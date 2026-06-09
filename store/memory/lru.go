@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package memory is nimbus's own in-process L1 store: a sharded LRU with TTL.
 //
 // It is intentionally hand-written (rather than wrapping Ristretto or Otter) to
