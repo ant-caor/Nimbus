@@ -3,6 +3,9 @@
 *.test
 *.out
 /bin/
+# Stray `go build` output from the package-main example/demo modules.
+/examples/cloudrun/cloudrun
+/demo/local/local
 
 # Go workspace files
 go.work

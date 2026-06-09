@@ -9,16 +9,35 @@ on:
 permissions:
   contents: read
 
+# Each module is validated in isolation, the way a real consumer pulls it. The
+# repo's go.work is a local-dev convenience only and must not mask a module's
+# own go.mod in CI.
+env:
+  GOWORK: "off"
+
 jobs:
+  gofmt:
+    name: gofmt (repo-wide)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.25.x"
+      # gofmt is module-agnostic; one walk of the whole repo covers every module.
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
   test:
-    name: test + vet + fmt (race)
+    name: test + vet (race)
     strategy:
       fail-fast: false
       matrix:
         # Floor is Go 1.25 (set by rueidis), so there is one supported Go line
-        # for now; the OS matrix is the meaningful axis. Add windows / a newer
-        # Go line here when relevant.
+        # for now; the OS axis is the meaningful one. The module axis validates
+        # each shipped module in isolation.
         os: [ubuntu-latest, macos-latest]
+        module: [".", "metrics", "invalidation/gcppubsub"]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -26,17 +45,19 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
-      - name: gofmt
-        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          cache-dependency-path: ${{ matrix.module }}/go.sum
       - name: vet
+        working-directory: ${{ matrix.module }}
         run: go vet ./...
       - name: test (race + coverage)
+        working-directory: ${{ matrix.module }}
         run: go test -race -covermode=atomic -coverprofile=coverage.out ./...
       - name: upload coverage
         if: matrix.os == 'ubuntu-latest'
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
-          files: ./coverage.out
+          files: ${{ matrix.module }}/coverage.out
+          flags: ${{ matrix.module }}
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
@@ -45,7 +66,17 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        dir: [".", "test/integration"]
+        # Every module, including the package-main examples/demo, so a broken
+        # build there is caught (golangci-lint type-checks the code).
+        dir:
+          [
+            ".",
+            "metrics",
+            "invalidation/gcppubsub",
+            "examples/cloudrun",
+            "demo/local",
+            "test/integration",
+          ]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
@@ -59,15 +90,21 @@ jobs:
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The shipped library modules (what consumers pull). examples/demo are
+        # package main and test/integration is test infra, both out of scope.
+        module: [".", "metrics", "invalidation/gcppubsub"]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: "1.25.x"
           cache: true
-      # Scan the library module (what ships to users); test-only deps live in a
-      # separate module and are out of scope for what consumers pull in.
+          cache-dependency-path: ${{ matrix.module }}/go.sum
       - name: govulncheck
+        working-directory: ${{ matrix.module }}
         env:
           # Pin the patched toolchain so the stdlib scan reflects fixes already
           # released (e.g. GO-2026-5039 in net/textproto, fixed in go1.25.11).

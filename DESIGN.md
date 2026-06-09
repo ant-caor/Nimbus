@@ -220,10 +220,29 @@ real deployment.
 
 ## Dependency hygiene
 
-The library module depends on `rueidis` and `golang.org/x/sync` only; the GCP
-Pub/Sub client is pulled only when you import `invalidation/gcppubsub`. The
-testcontainers / Pub/Sub-emulator dependency tree lives in a **separate module**
-under `test/integration/`, so it never reaches the library's dependents.
+The core module `github.com/ant-caor/nimbus` depends on `rueidis` and
+`golang.org/x/sync` only. Everything provider- or OTel-specific lives in its own
+module, so it reaches a dependent only if that dependent imports it:
+
+- `github.com/ant-caor/nimbus/invalidation/gcppubsub` — the GCP Pub/Sub bus
+  (pulls `cloud.google.com/go/pubsub/v2`, gRPC, protobuf).
+- `github.com/ant-caor/nimbus/metrics` — the OpenTelemetry metrics adapter
+  (pulls `go.opentelemetry.io/otel/...`).
+- `test/integration/` — the testcontainers / Pub/Sub-emulator tree.
+
+Import paths are unchanged from a single-module layout; importing `gcppubsub` or
+`metrics` simply adds a `require` for that module rather than for the core. The
+result: a consumer of just the core (in-process L1 + Redis L2 + the Redis Pub/Sub
+bus, `invalidation/redispubsub`) gets a coherence stack with **no GCP and no OTel
+in its module graph** — fully cloud-agnostic, running on any cloud or on-prem
+wherever Redis is reachable. `go list -m all` on the core resolves to roughly a
+dozen modules instead of two hundred.
+
+Each module is independently buildable through its committed `replace` directives
+(pointing at the in-tree core), so CI validates each in isolation with
+`GOWORK=off` — exactly as a real `go get` consumer would pull it. For convenience,
+a repo-root `go.work` (untracked) can wire all modules together when editing
+across them locally; it is optional and never required to build.
 
 The Go floor is 1.25, set by `rueidis`'s transitive requirements rather than by
 choice; it is a reasonable minimum for 2026.

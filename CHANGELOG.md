@@ -22,14 +22,24 @@ patch releases never do.
 - The versioned **fill invariant** (CAS on write) that closes the
   fill-after-invalidate stale-read race.
 - Cross-instance invalidation bus (`invalidation.Bus`) with transports:
-  in-process (`invalidation.Mem`), GCP Pub/Sub pull and push
-  (`invalidation/gcppubsub`), and Redis Pub/Sub (`invalidation/redispubsub`).
+  in-process (`invalidation.Mem`) and Redis Pub/Sub (`invalidation/redispubsub`)
+  in the core module, plus GCP Pub/Sub pull and push in a **separate module**
+  (`github.com/ant-caor/nimbus/invalidation/gcppubsub`).
 - Tag-based invalidation (`WithTags`, `InvalidateTag`).
-- OpenTelemetry metrics subpackage (`metrics`) using asynchronous instruments,
-  keeping the core OTel-free.
-- Examples: an L1-only `examples/basic`, a deployable `examples/cloudrun`
-  (distroless Dockerfile + Terraform + OIDC push), and a local `demo/local`
-  (docker compose with Redis and the Pub/Sub emulator).
+- OpenTelemetry metrics in a **separate module**
+  (`github.com/ant-caor/nimbus/metrics`) using asynchronous instruments, so the
+  core module carries no OpenTelemetry dependency.
+- **Cloud-agnostic dependency layout.** The core module
+  `github.com/ant-caor/nimbus` requires only `rueidis` and `golang.org/x/sync`;
+  GCP (`invalidation/gcppubsub`) and OpenTelemetry (`metrics`) are opt-in sibling
+  modules, so a dependent never pulls the GCP/gRPC/protobuf or OTel trees unless
+  it imports them. Import paths are unchanged; using GCP or OTel now adds a
+  `go get` of the respective module. The Redis Pub/Sub bus + Redis L2 give a
+  fully GCP-free coherence path that runs on any cloud or on-prem.
+- Examples: an L1-only `examples/basic` (in the core module), a deployable
+  `examples/cloudrun` (distroless Dockerfile + Terraform + OIDC push), and a
+  local `demo/local` (docker compose with Redis and the Pub/Sub emulator); the
+  two GCP-using examples are their own modules and are never published.
 - Documentation: `README.md` and a design write-up in `DESIGN.md`.
 - Integration test suite (separate module) running against real Redis and the
   Pub/Sub emulator via testcontainers.
