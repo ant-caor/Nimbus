@@ -25,7 +25,9 @@ jobs:
         uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
           languages: go
-          build-mode: autobuild
+          # Buildless extraction: avoids autobuild's fragility on this multi-module
+          # repo (root + test/integration) and toolchain mismatches.
+          build-mode: none
       - name: Analyze
         uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
         with:
