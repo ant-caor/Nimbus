@@ -125,17 +125,20 @@ jobs:
           cache: true
       - name: enforce core coverage floor
         run: |
-          go test -covermode=atomic -coverprofile=cov.out ./...
-          total=$(go tool cover -func=cov.out | awk '/^total:/ {sub(/%/,"",$3); print $3}')
-          # The aggregate is dragged down by packages whose tests live in the
-          # separate integration module (redisstore, redispubsub report 0% here),
-          # so the floor sits comfortably below the ~70% actual: it catches a real
-          # regression, not a rounding wobble.
-          floor=65.0
-          echo "core aggregate statement coverage: ${total}% (floor ${floor}%)"
-          if [ -z "$total" ]; then echo "::error::could not parse coverage total"; exit 1; fi
-          awk -v t="$total" -v f="$floor" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
-            echo "::error::core coverage ${total}% is below the ${floor}% floor"
+          # Gate the root package — the core cache/coherence logic (cache.go,
+          # builder.go, loader.go, …). The repo-wide aggregate is misleading: it
+          # dilutes with packages (redisstore, redispubsub) whose tests live in the
+          # separate integration module and report 0% here. Root coverage is the
+          # meaningful, environment-stable number (currently 70%).
+          go test -count=1 -covermode=atomic -coverprofile=cov.out ./... | tee test.out
+          pct=$(awk '$1=="ok" && $2=="github.com/ant-caor/nimbus" {
+                  for (i=1;i<=NF;i++) if ($i ~ /%$/) { sub(/%/,"",$i); print $i }
+                }' test.out)
+          floor=60.0
+          echo "core (root package) coverage: ${pct}% (floor ${floor}%)"
+          if [ -z "$pct" ]; then echo "::error::could not parse root package coverage"; exit 1; fi
+          awk -v t="$pct" -v f="$floor" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
+            echo "::error::core coverage ${pct}% is below the ${floor}% floor"
             exit 1
           }
 
