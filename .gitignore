@@ -19,3 +19,12 @@ crash.log
 # OS / editor
 .DS_Store
 *.swp
+
+# --- Local Claude Code setup (personal dev tooling, never committed) ---
+# Claude Code still loads these from disk; .gitignore only keeps them private,
+# so the public repo stays free of personal AI tooling.
+/CLAUDE.md
+/CLAUDE.local.md
+/.claude/agents/
+/.claude/skills/
+/.claude/settings.local.json
