@@ -1,0 +1,26 @@
+# Codecov reporting config. The status checks here are INFORMATIONAL: they drive
+# the per-PR coverage comment and the trend, but do not block merges. The hard
+# coverage gate with teeth is the `coverage` job in ci.yml (a core-coverage floor
+# wired into the required `ci-success` check), so blocking never depends on the
+# Codecov service being reachable.
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1% # tolerate a 1% dip in reporting; the hard floor lives in CI
+        informational: true
+    patch:
+      default:
+        target: 70%
+        informational: true
+
+comment:
+  layout: "reach, diff, flags, files"
+  require_changes: true
+
+# One flag per module so coverage is attributed correctly across the multi-module
+# repo (matches the codecov-action `flags` set in ci.yml's test matrix).
+flag_management:
+  default_rules:
+    carryforward: true
