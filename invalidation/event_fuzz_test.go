@@ -63,7 +63,7 @@ func FuzzEventDecode(f *testing.F) {
 	} {
 		f.Add(seed)
 	}
-	f.Fuzz(func(t *testing.T, b []byte) {
+	f.Fuzz(func(_ *testing.T, b []byte) {
 		var ev Event
 		_ = json.Unmarshal(b, &ev) // must not panic on any input
 	})

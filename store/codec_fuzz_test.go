@@ -60,7 +60,7 @@ func FuzzValueCodecDecode(f *testing.F) {
 		f.Add(seed)
 	}
 	c := JSON[fuzzVal]()
-	f.Fuzz(func(t *testing.T, b []byte) {
+	f.Fuzz(func(_ *testing.T, b []byte) {
 		_, _ = c.Decode(b) // must not panic on any input
 	})
 }
