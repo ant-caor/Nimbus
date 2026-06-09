@@ -14,11 +14,18 @@ jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-latest
-    # A job-level permissions block REPLACES the workflow-level one, so contents
-    # must be listed explicitly here or checkout's authenticated clone 404s.
+    # A job-level permissions block REPLACES the workflow-level one, so every
+    # scope Scorecard needs must be listed here. Its checks query commits, PRs,
+    # reviews, workflow runs, and statuses via the GraphQL API; without these read
+    # scopes those queries fail with "Resource not accessible by integration".
     permissions:
-      contents: read # checkout / Scorecard repo reads
+      contents: read # checkout / repo reads
       id-token: write # publish results to the OpenSSF API (for the badge)
+      actions: read
+      checks: read
+      statuses: read
+      pull-requests: read
+      issues: read
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
