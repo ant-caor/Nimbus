@@ -13,6 +13,24 @@ services:
       timeout: 2s
       retries: 10
 
+  # Cross-instance invalidation bus. The same emulator image the integration
+  # suite uses; auth is skipped because PUBSUB_EMULATOR_HOST is set on the
+  # services. The emulator is in-memory, so the topic is recreated on restart
+  # (gcppubsub.New ensures it exists on startup).
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:emulators
+    command: >
+      gcloud beta emulators pubsub start
+      --host-port=0.0.0.0:8085
+      --project=nimbus-demo
+    ports:
+      - "8085:8085"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8085/ || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
   svc-a:
     build:
       context: ../..
@@ -21,10 +39,14 @@ services:
       REDIS_ADDR: "redis:6379"
       INSTANCE_ID: "svc-a"
       PORT: "8080"
+      PUBSUB_EMULATOR_HOST: "pubsub:8085"
+      PUBSUB_PROJECT_ID: "nimbus-demo"
     ports:
       - "8081:8080"
     depends_on:
       redis:
+        condition: service_healthy
+      pubsub:
         condition: service_healthy
 
   svc-b:
@@ -35,8 +57,12 @@ services:
       REDIS_ADDR: "redis:6379"
       INSTANCE_ID: "svc-b"
       PORT: "8080"
+      PUBSUB_EMULATOR_HOST: "pubsub:8085"
+      PUBSUB_PROJECT_ID: "nimbus-demo"
     ports:
       - "8082:8080"
     depends_on:
       redis:
+        condition: service_healthy
+      pubsub:
         condition: service_healthy
