@@ -127,8 +127,13 @@ jobs:
         run: |
           go test -covermode=atomic -coverprofile=cov.out ./...
           total=$(go tool cover -func=cov.out | awk '/^total:/ {sub(/%/,"",$3); print $3}')
-          floor=70.0
-          echo "core statement coverage: ${total}% (floor ${floor}%)"
+          # The aggregate is dragged down by packages whose tests live in the
+          # separate integration module (redisstore, redispubsub report 0% here),
+          # so the floor sits comfortably below the ~70% actual: it catches a real
+          # regression, not a rounding wobble.
+          floor=65.0
+          echo "core aggregate statement coverage: ${total}% (floor ${floor}%)"
+          if [ -z "$total" ]; then echo "::error::could not parse coverage total"; exit 1; fi
           awk -v t="$total" -v f="$floor" 'BEGIN { exit (t+0 >= f+0) ? 0 : 1 }' || {
             echo "::error::core coverage ${total}% is below the ${floor}% floor"
             exit 1

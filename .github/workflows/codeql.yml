@@ -1,9 +1,9 @@
 name: CodeQL
 
-# Static analysis for Go. Buildless extraction (build-mode: none) analyzes every
-# .go file across all modules in the repo without needing a per-module build, so
-# the multi-module layout does not limit coverage. Now feasible because the repo
-# is public (code scanning is free for public repos).
+# Static analysis for Go. Go does not support buildless extraction
+# (build-mode: none), so this uses autobuild, which builds the root module — the
+# core library. Now feasible because the repo is public (code scanning is free
+# for public repos).
 on:
   push:
     branches: [main]
@@ -13,6 +13,9 @@ on:
 
 permissions:
   contents: read
+
+env:
+  GOWORK: "off"
 
 jobs:
   analyze:
@@ -26,7 +29,7 @@ jobs:
       - uses: github/codeql-action/init@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           languages: go
-          build-mode: none
+          build-mode: autobuild
       - uses: github/codeql-action/analyze@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
         with:
           category: "/language:go"
