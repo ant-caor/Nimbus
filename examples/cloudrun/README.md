@@ -1,6 +1,6 @@
-# runcache on Cloud Run
+# Nimbus on Cloud Run
 
-A deployable reference: a runcache service with an in-process L1, a Memorystore
+A deployable reference: a Nimbus service with an in-process L1, a Memorystore
 (Redis) L2, and a **Pub/Sub push** invalidation bus. Push delivery is
 throttle-safe under Cloud Run's default request-only CPU allocation.
 
@@ -27,7 +27,7 @@ used so the data path scales to zero and avoids the connector's standing cost.
 
 ```sh
 # 1. Build and push the image (from the repo root).
-gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT/REPO/runcache:latest \
+gcloud builds submit --tag REGION-docker.pkg.dev/PROJECT/REPO/nimbus:latest \
   --config /dev/stdin <<'EOF'
 steps:
   - name: gcr.io/cloud-builders/docker
@@ -59,7 +59,7 @@ curl -H "Authorization: Bearer $TOKEN" "$URL/items/42"
 | GET | `/healthz` | liveness |
 
 The `loadItem` function in `main.go` is a placeholder; replace it with your real
-backend and return `runcache.ErrNotFound` for missing items to enable negative
+backend and return `nimbus.ErrNotFound` for missing items to enable negative
 caching.
 
 ## Cleanup

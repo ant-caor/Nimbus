@@ -8,7 +8,7 @@
 // guarantees completion while the instance is idle; the next request re-triggers
 // a still-stale entry.
 //
-// Keys are strings, matching the rest of runcache's internal key space.
+// Keys are strings, matching the rest of nimbus's internal key space.
 package refresh
 
 import "context"

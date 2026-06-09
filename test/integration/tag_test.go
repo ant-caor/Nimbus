@@ -7,10 +7,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // TestInvalidateTagOverL2 exercises the L2 tag index end to end: two keys share
@@ -30,7 +30,7 @@ func TestInvalidateTagOverL2(t *testing.T) {
 		redisstore.WithKeyPrefix("tag:"+t.Name()+":"),
 		redisstore.WithTagPrefix("tagidx:"+t.Name()+":"),
 	)
-	c, err := runcache.NewBuilder[string, string](loader).
+	c, err := nimbus.NewBuilder[string, string](loader).
 		L1(memory.New[string]()).
 		L2(l2).
 		TTL(time.Hour, 0).
@@ -38,8 +38,8 @@ func TestInvalidateTagOverL2(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = c.Close() }()
 
-	require.NoError(t, c.Set(ctx, "a", "v1", runcache.WithTags("grp")))
-	require.NoError(t, c.Set(ctx, "b", "v2", runcache.WithTags("grp")))
+	require.NoError(t, c.Set(ctx, "a", "v1", nimbus.WithTags("grp")))
+	require.NoError(t, c.Set(ctx, "b", "v2", nimbus.WithTags("grp")))
 	if _, ok, _ := c.Get(ctx, "a"); !ok {
 		t.Fatal("a should be present before invalidation")
 	}

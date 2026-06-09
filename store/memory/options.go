@@ -1,6 +1,6 @@
 package memory
 
-import "github.com/ant-caor/runcache/internal/clock"
+import "github.com/ant-caor/nimbus/internal/clock"
 
 type config struct {
 	capacity int // max entries across all shards; 0 = unbounded

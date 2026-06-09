@@ -1,4 +1,4 @@
-// Package integration runs runcache against real backing services in Docker via
+// Package integration runs nimbus against real backing services in Docker via
 // testcontainers. It lives in its own module so the test infrastructure does
 // not leak into the library's dependency graph.
 //
@@ -50,7 +50,7 @@ func TestMain(m *testing.M) {
 	_ = os.Setenv("PUBSUB_EMULATOR_HOST", psCtr.URI())
 
 	pgCtr, err := tcpostgres.Run(ctx, "postgres:16-alpine",
-		tcpostgres.WithDatabase("runcache"),
+		tcpostgres.WithDatabase("nimbus"),
 		tcpostgres.WithUsername("test"),
 		tcpostgres.WithPassword("test"),
 		tcpostgres.BasicWaitStrategies(),
@@ -72,7 +72,7 @@ func TestMain(m *testing.M) {
 }
 
 // newRedisClient returns a rueidis client with client-side caching disabled;
-// runcache owns the in-process cache layer.
+// nimbus owns the in-process cache layer.
 func newRedisClient(t *testing.T) rueidis.Client {
 	t.Helper()
 	c, err := rueidis.NewClient(rueidis.ClientOption{

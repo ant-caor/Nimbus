@@ -1,7 +1,7 @@
 // Package singleflight is a thin generic wrapper over
 // golang.org/x/sync/singleflight. It collapses concurrent calls that share the
 // same key into a single execution whose result is shared with all callers,
-// which is how runcache protects the backend from cold-start stampedes.
+// which is how nimbus protects the backend from cold-start stampedes.
 package singleflight
 
 import xsf "golang.org/x/sync/singleflight"

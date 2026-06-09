@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ant-caor/runcache/invalidation"
+	"github.com/ant-caor/nimbus/invalidation"
 )
 
 func TestPushHandlerDecodesEnvelope(t *testing.T) {

@@ -13,10 +13,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/require"
 
-	"github.com/ant-caor/runcache"
-	"github.com/ant-caor/runcache/redisstore"
-	"github.com/ant-caor/runcache/store"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus"
+	"github.com/ant-caor/nimbus/redisstore"
+	"github.com/ant-caor/nimbus/store"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // TestStampedeOverPostgresAndL2 is the full-stack proof: a real Postgres origin
@@ -42,15 +42,15 @@ func TestStampedeOverPostgresAndL2(t *testing.T) {
 		var v string
 		err := pool.QueryRow(ctx, `SELECT val FROM items WHERE id = $1`, id).Scan(&v)
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", runcache.ErrNotFound
+			return "", nimbus.ErrNotFound
 		}
 		return v, err
 	}
 
 	prefix := "pg:" + t.Name() + ":"
-	mk := func() runcache.Cache[string, string] {
+	mk := func() nimbus.Cache[string, string] {
 		l2 := redisstore.New[string](newRedisClient(t), store.JSON[string](), redisstore.WithKeyPrefix(prefix))
-		c, err := runcache.NewBuilder[string, string](loader).
+		c, err := nimbus.NewBuilder[string, string](loader).
 			L1(memory.New[string]()).
 			L2(l2).
 			TTL(time.Minute, 0).

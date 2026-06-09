@@ -1,4 +1,4 @@
-package runcache
+package nimbus
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ant-caor/runcache/invalidation"
-	"github.com/ant-caor/runcache/store/memory"
+	"github.com/ant-caor/nimbus/invalidation"
+	"github.com/ant-caor/nimbus/store/memory"
 )
 
 // TestCrossInstanceInvalidationViaBus proves that an Invalidate on one instance
