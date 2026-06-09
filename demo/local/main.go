@@ -56,7 +56,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("connect pubsub: %v", err)
 		}
-		defer psClient.Close()
+		defer func() { _ = psClient.Close() }()
 		// The emulator does not support the subscription expiration policy, so
 		// disable it (TTL 0). Each instance gets its own random subscription, so
 		// a broadcast fans out to every instance.
