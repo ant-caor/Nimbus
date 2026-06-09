@@ -30,8 +30,17 @@ patch releases never do.
 - Examples: an L1-only `examples/basic`, a deployable `examples/cloudrun`
   (distroless Dockerfile + Terraform + OIDC push), and a local `demo/local`
   (docker compose with Redis and the Pub/Sub emulator).
-- Documentation: `README.md`, a design write-up in `DESIGN.md`, and `CLAUDE.md`.
+- Documentation: `README.md` and a design write-up in `DESIGN.md`.
 - Integration test suite (separate module) running against real Redis and the
   Pub/Sub emulator via testcontainers.
+
+### Fixed
+
+- Enforce the fill invariant for **negative** entries: a known-absent result is
+  now cached only through a version-gated CAS (a tombstone written iff L2 is still
+  at the version read before the loader ran). Previously the negative install
+  bypassed the CAS, so a value written while a not-found loader was in flight
+  could be masked by a stale negative for the whole `NegativeTTL`. Covered by
+  `TestNegativeFillInvariantUnderWrite`.
 
 [Unreleased]: https://github.com/ant-caor/nimbus/commits/main
