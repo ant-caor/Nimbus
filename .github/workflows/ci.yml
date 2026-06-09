@@ -98,10 +98,8 @@ jobs:
         working-directory: test/integration
         run: go test -count=1 -timeout=15m ./...
 
-  dependency-review:
-    name: dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+  # NOTE: a dependency-review job (actions/dependency-review-action) was omitted
+  # because the GitHub Dependency Review API requires GitHub Advanced Security on
+  # this repository. Supply-chain coverage is instead provided by govulncheck
+  # (above), Dependabot (.github/dependabot.yml), and OpenSSF Scorecard. Re-add
+  # the job once Advanced Security / the Dependency Review API is available.
