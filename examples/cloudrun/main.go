@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Command cloudrun is a deployable Nimbus service for Google Cloud Run: an
 // in-process L1, a Memorystore (Redis) L2, and a Pub/Sub push invalidation bus.
 // The Terraform in ./terraform provisions everything. See README.md.

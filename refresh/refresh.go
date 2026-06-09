@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package refresh defines how stale-while-revalidate revalidation is scheduled.
 //
 // Two strategies exist because of Cloud Run's CPU model. Request-bound refresh
