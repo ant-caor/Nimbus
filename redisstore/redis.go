@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Package redisstore is nimbus's shared, authoritative L2 tier, backed by
 // Redis or Memorystore via rueidis.
 //

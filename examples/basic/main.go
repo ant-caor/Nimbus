@@ -1,3 +1,6 @@
+// Copyright 2026 Antonio Cabezas Ordóñez
+// SPDX-License-Identifier: Apache-2.0
+
 // Command basic is the smallest Nimbus example: an L1-only cache with
 // stampede protection. No Redis, no Pub/Sub, no Docker required.
 package main
