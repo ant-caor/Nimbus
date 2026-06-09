@@ -1,13 +1,23 @@
 name: Release
 
-# Cutting a release is a deliberate, manual step: push a semver tag (e.g. v0.1.0)
-# and this workflow runs the test suite as a gate, then publishes a GitHub
+# Cutting a release is a deliberate, manual step: push a version tag and this
+# workflow runs that module's test suite as a gate, then publishes a GitHub
 # Release with auto-generated notes. The Go module version IS the tag; the module
 # proxy (proxy.golang.org) and checksum DB (sum.golang.org) pick it up on first
 # fetch — there is no artifact to build or sign for a library.
+#
+# This repo is multi-module, so a tag is prefixed with the module's directory:
+#   v0.1.0                              -> root module github.com/ant-caor/nimbus
+#   metrics/v0.1.0                      -> github.com/ant-caor/nimbus/metrics
+#   invalidation/gcppubsub/v0.1.0       -> github.com/ant-caor/nimbus/invalidation/gcppubsub
+# Release the root first, then the sub-modules (they require a published root
+# version). See RELEASING.md.
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
+      - "metrics/v*"
+      - "invalidation/gcppubsub/v*"
 
 permissions:
   contents: read
@@ -18,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the GitHub Release
+    env:
+      GOWORK: "off"
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -26,7 +38,19 @@ jobs:
         with:
           go-version: "1.25.x"
           cache: true
+      - name: Resolve module directory from tag
+        id: mod
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          case "$tag" in
+            metrics/v*)                dir="metrics" ;;
+            invalidation/gcppubsub/v*) dir="invalidation/gcppubsub" ;;
+            v*)                        dir="." ;;
+            *) echo "::error::unrecognized release tag '$tag'"; exit 1 ;;
+          esac
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
       - name: Verify (race)
+        working-directory: ${{ steps.mod.outputs.dir }}
         run: go test -race ./...
       - name: Create release
         env:

@@ -13,6 +13,50 @@ updates:
         patterns:
           - "*"
 
+  # OTel metrics module (separate go.mod; keeps OpenTelemetry out of the core).
+  - package-ecosystem: gomod
+    directory: "/metrics"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  # GCP Pub/Sub bus module (separate go.mod; keeps the GCP tree out of the core).
+  - package-ecosystem: gomod
+    directory: "/invalidation/gcppubsub"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  # Deployable Cloud Run example (separate go.mod; package main, never published).
+  - package-ecosystem: gomod
+    directory: "/examples/cloudrun"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
+  # Local docker-compose demo (separate go.mod; package main, never published).
+  - package-ecosystem: gomod
+    directory: "/demo/local"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      go-dependencies:
+        patterns:
+          - "*"
+
   # Integration test module (separate go.mod).
   - package-ecosystem: gomod
     directory: "/test/integration"

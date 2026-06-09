@@ -114,9 +114,16 @@ go test -run='^$' -bench=. -benchmem ./...
 
 ## Observability
 
-Import `nimbus/metrics` to export cache statistics as OpenTelemetry metrics.
+The `metrics` adapter exports cache statistics as OpenTelemetry metrics. It ships
+as a **separate module** so the core carries no OpenTelemetry dependency — add it
+only if you want OTel:
+
+```sh
+go get github.com/ant-caor/nimbus/metrics
+```
+
 It observes `Stats()` through asynchronous instruments, so it adds nothing to the
-hot path, and the core package keeps no OpenTelemetry dependency:
+hot path:
 
 ```go
 reg, err := metrics.Register(meter, cache) // meter is an otel metric.Meter
@@ -137,14 +144,20 @@ cross-instance bus over Pub/Sub deployed to Cloud Run via Terraform, see
 
 ## Invalidation transports
 
-The bus is an interface (`invalidation.Bus`), so the transport is pluggable:
+The bus is an interface (`invalidation.Bus`), so the transport is pluggable. The
+in-process and Redis transports live in the core module; the GCP transport is a
+**separate module** (`go get github.com/ant-caor/nimbus/invalidation/gcppubsub`)
+so the core never pulls the GCP/gRPC tree:
 
-| Transport | Package | Notes |
-|---|---|---|
-| GCP Pub/Sub (pull) | `invalidation/gcppubsub` | true fan-out; needs always-on CPU |
-| GCP Pub/Sub (push) | `invalidation/gcppubsub` | load-balanced; throttle-safe for request-only-CPU Cloud Run |
-| Redis Pub/Sub | `invalidation/redispubsub` | reuses the Redis client your L2 already holds — no extra infra, no GCP dependency |
-| In-process | `invalidation.Mem` | single-process fan-out for tests |
+| Transport | Package | Module | Notes |
+|---|---|---|---|
+| GCP Pub/Sub (pull) | `invalidation/gcppubsub` | separate | true fan-out; needs always-on CPU |
+| GCP Pub/Sub (push) | `invalidation/gcppubsub` | separate | load-balanced; throttle-safe for request-only-CPU Cloud Run |
+| Redis Pub/Sub | `invalidation/redispubsub` | core | reuses the Redis client your L2 already holds — no extra infra, no GCP dependency |
+| In-process | `invalidation.Mem` | core | single-process fan-out for tests |
+
+The Redis Pub/Sub bus + Redis L2 is a fully **GCP-free, cloud-agnostic** coherence
+stack: it runs on any cloud or on-prem wherever Redis is reachable.
 
 ```go
 bus := redispubsub.New(rdb, "myapp:invalidations") // rdb is your rueidis.Client
@@ -170,7 +183,7 @@ Nimbus is for read-heavy, high-traffic services on autoscaling Cloud Run where c
 
 The in-memory cache space in Go is well served by [Ristretto](https://github.com/dgraph-io/ristretto) and [Otter](https://github.com/maypok86/otter). Nimbus does not try to out-compete them on raw eviction; its value is the **serverless orchestration layer**: tiering, the versioned fill invariant, cross-instance coherence, and a deployable reference. The L1 is hand-written behind the `store.Store` interface, so a faster engine can be dropped in later.
 
-Integration tests (Redis, and the Pub/Sub emulator) live in a separate module under `test/integration/` so the library's own dependents pull only `rueidis` and `golang.org/x/sync`, never the test infrastructure.
+The core module `github.com/ant-caor/nimbus` depends on only `rueidis` and `golang.org/x/sync`. Provider- and OTel-specific code is isolated into its own modules — `invalidation/gcppubsub` (GCP), `metrics` (OpenTelemetry), and the testcontainers tree under `test/integration/` — so a dependent never pulls those graphs unless it imports them. `go list -m all` on the core resolves to roughly a dozen modules rather than two hundred.
 
 A deeper write-up of the coherence protocol lives in [`DESIGN.md`](DESIGN.md).
 

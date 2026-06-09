@@ -6,6 +6,31 @@ the test suite as a gate and publishes a GitHub Release with generated notes; th
 module proxy (`proxy.golang.org`) and checksum database (`sum.golang.org`) pick
 up the version on the first `go get`.
 
+## Modules in this repo
+
+This repo hosts several modules. Each releases independently and its tag is
+**prefixed with the module's directory** (Go's requirement for a module not at
+the repo root):
+
+| Module | Tag format | Published? |
+|---|---|---|
+| `github.com/ant-caor/nimbus` (core) | `vX.Y.Z` | yes |
+| `github.com/ant-caor/nimbus/metrics` | `metrics/vX.Y.Z` | yes |
+| `github.com/ant-caor/nimbus/invalidation/gcppubsub` | `invalidation/gcppubsub/vX.Y.Z` | yes |
+| `examples/cloudrun`, `demo/local` | — | no (package main) |
+| `test/integration` | — | no (test infra) |
+
+The sub-modules **import the core**, so always **release the core first**: a
+sub-module pinned to `github.com/ant-caor/nimbus vX.Y.Z` cannot resolve until
+that root tag is on the proxy. Their `0.x` lines are independent and may drift
+from the core's — that is expected for a multi-module repo.
+
+Before tagging a sub-module, replace its dev `require github.com/ant-caor/nimbus
+v0.0.0` + local `replace` with a `require` on the just-released core version
+(`go mod edit -dropreplace=github.com/ant-caor/nimbus -require=github.com/ant-caor/nimbus@vX.Y.Z`,
+then `GOWORK=off go mod tidy`). The `examples/*` and `demo/local` modules are
+never published, so their `replace ../..` directives stay.
+
 ## Cutting a release
 
 1. Ensure `main` is green and `CHANGELOG.md` has the changes under `[Unreleased]`.
@@ -20,12 +45,38 @@ up the version on the first `go get`.
    git push origin v0.1.0
    ```
 
-5. The `Release` workflow runs `go test -race ./...` and, on success, creates the
-   GitHub Release. Verify the module is fetchable:
+5. The `Release` workflow detects the module from the tag, runs `go test -race
+   ./...` in it and, on success, creates the GitHub Release. Verify the module is
+   fetchable:
 
    ```sh
    go install github.com/ant-caor/nimbus@v0.1.0   # populates the proxy/sum DB
    ```
+
+### Releasing a sub-module (`metrics`, `invalidation/gcppubsub`)
+
+Do this **after** the core release it depends on is published.
+
+1. Point the sub-module at the published core version and drop the dev replace:
+
+   ```sh
+   cd metrics   # or invalidation/gcppubsub
+   go mod edit -dropreplace=github.com/ant-caor/nimbus \
+               -require=github.com/ant-caor/nimbus@v0.1.0
+   GOWORK=off go mod tidy && GOWORK=off go test ./...
+   ```
+
+2. Commit, then tag with the **directory-prefixed** version and push:
+
+   ```sh
+   git tag -s metrics/v0.1.0 -m "metrics/v0.1.0"
+   git push origin metrics/v0.1.0
+   ```
+
+3. Verify: `go install github.com/ant-caor/nimbus/metrics@v0.1.0`.
+
+The `examples/*` and `demo/local` modules are `package main` and are never tagged;
+they keep their `replace ../..` directives so a fresh checkout builds them.
 
 ## Supply-chain integrity
 
