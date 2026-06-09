@@ -6,6 +6,7 @@ on:
     - cron: "20 7 * * 1" # weekly, Monday 07:20 UTC
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions: read-all
 
@@ -16,9 +17,10 @@ jobs:
     permissions:
       id-token: write # publish results to the OpenSSF API (for the badge)
     steps:
+      # NOTE: no `persist-credentials: false` here — combined with checkout v6 it
+      # made the clone fail ("repository not found"). Scorecard reads the repo via
+      # the API, so persisting the checkout token is harmless.
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
       - name: Run analysis
         uses: ossf/scorecard-action@4eaacf0543bb3f2c246792bd56e8cdeffafb205a # v2.4.3
         with:
