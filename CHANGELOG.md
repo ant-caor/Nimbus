@@ -47,6 +47,8 @@ patch releases never do.
   to report its tombstone lifetime (implemented by `redisstore`). `Build` uses it
   to reject a configuration whose L2 tombstone TTL does not exceed the refresh
   timeout, which would reopen the fill-after-invalidate race.
+- `store.ConditionalStore`, an optional interface a `Store` may implement for a
+  version-gated install (`SetIfNewer`), implemented by `store/memory`.
 
 ### Changed
 
@@ -70,6 +72,12 @@ patch releases never do.
 
 ### Fixed
 
+- Close a narrow **L1-stomp** window: every L2-minted install into L1 is now
+  version-gated (`SetIfNewer`), so a slow fill cannot overwrite a newer entry that
+  a concurrent `Set` or a bus-delivered eviction placed in L1 between the fill's
+  `SetCAS` and its install. The L1 stays best-effort — a `Store` without
+  `ConditionalStore` falls back to an unconditional install, and bus eviction
+  stays unconditional. Covered by `TestSetIfNewer` and `TestFillVersionGatesL1Install`.
 - Enforce the fill invariant for **negative** entries: a known-absent result is
   now cached only through a version-gated CAS (a tombstone written iff L2 is still
   at the version read before the loader ran). Previously the negative install

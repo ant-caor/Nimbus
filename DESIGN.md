@@ -94,6 +94,17 @@ This is proven by `TestFillInvariantUnderInvalidate`: it blocks a loader
 mid-fill, invalidates the key, releases the loader, and asserts the stale value
 is never observable.
 
+As a defense-in-depth layer, every L2-minted install into L1 is **version-gated**
+(`store.ConditionalStore.SetIfNewer`): it will not overwrite a live L1 entry that
+already holds an equal-or-greater version. This closes a narrow L1-stomp window —
+between a fill's `SetCAS` and its L1 install, a concurrent `Set` or a
+bus-delivered eviction can land a newer entry, which an unconditional install
+would clobber with the fill's older value. It relies on the version being
+globally monotonic per key (see the clock-seeding in the version protocol below).
+The L1 stays a best-effort accelerator: a Store that does not implement
+`ConditionalStore` falls back to an unconditional install, and bus eviction stays
+unconditional (dropping is always safe).
+
 ## Version protocol
 
 There is a **single monotonic version per key**, minted only inside L2 Lua

@@ -76,6 +76,66 @@ func TestDelete(t *testing.T) {
 	}
 }
 
+func TestSetIfNewer(t *testing.T) {
+	t.Parallel()
+	mc := clock.NewMock(time.Now())
+	m := New[string](WithClock(mc))
+	ctx := context.Background()
+
+	ver := func(v string, version uint64, ttl time.Duration) store.Entry[string] {
+		now := mc.Now()
+		return store.Entry[string]{Value: v, Version: version, StoredAt: now, FreshUntil: now.Add(ttl), StaleUntil: now.Add(ttl)}
+	}
+	current := func() (string, uint64) {
+		e, ok, _ := m.Get(ctx, "k")
+		if !ok {
+			t.Fatal("k unexpectedly absent")
+		}
+		return e.Value, e.Version
+	}
+
+	// Install over an absent key.
+	if installed, _ := m.SetIfNewer(ctx, "k", ver("v5", 5, time.Hour)); !installed {
+		t.Fatal("SetIfNewer over an absent key must install")
+	}
+	if v, n := current(); v != "v5" || n != 5 {
+		t.Fatalf("after absent install = (%q,%d), want (v5,5)", v, n)
+	}
+
+	// A strictly newer version replaces.
+	if installed, _ := m.SetIfNewer(ctx, "k", ver("v7", 7, time.Hour)); !installed {
+		t.Fatal("a newer version must install")
+	}
+	if v, n := current(); v != "v7" || n != 7 {
+		t.Fatalf("after newer install = (%q,%d), want (v7,7)", v, n)
+	}
+
+	// An older version is rejected and does not stomp the live entry.
+	if installed, _ := m.SetIfNewer(ctx, "k", ver("v3", 3, time.Hour)); installed {
+		t.Fatal("an older version must be rejected")
+	}
+	if v, n := current(); v != "v7" || n != 7 {
+		t.Fatalf("older install stomped the entry = (%q,%d), want (v7,7)", v, n)
+	}
+
+	// An equal version is skipped: same version denotes the same write.
+	if installed, _ := m.SetIfNewer(ctx, "k", ver("v7-dup", 7, time.Hour)); installed {
+		t.Fatal("an equal version must be skipped")
+	}
+	if v, _ := current(); v != "v7" {
+		t.Fatalf("equal-version install changed the value to %q, want v7", v)
+	}
+
+	// Once the live entry expires it is dead, so even an older version installs.
+	mc.Advance(2 * time.Hour)
+	if installed, _ := m.SetIfNewer(ctx, "k", ver("v2", 2, time.Hour)); !installed {
+		t.Fatal("install over an expired entry must succeed regardless of version")
+	}
+	if v, n := current(); v != "v2" || n != 2 {
+		t.Fatalf("after expired-replace = (%q,%d), want (v2,2)", v, n)
+	}
+}
+
 func TestConcurrentAccess(t *testing.T) {
 	t.Parallel()
 	m := New[int](WithCapacity(1000))
