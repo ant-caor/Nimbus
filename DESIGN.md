@@ -249,5 +249,9 @@ choice; it is a reasonable minimum for 2026.
 
 ## Performance
 
-Hot paths allocate zero times per operation. See the performance table in the
-[README](README.md) and reproduce with `make bench`.
+Hot paths allocate zero times per operation for `string` keys (and any key
+whose `KeyString` renders without allocating). Integer keys use an
+allocation-light `strconv` path — zero for small magnitudes, at most one
+allocation for the rendered key string otherwise; other key types fall back to
+`fmt` and should supply `KeyString` for a zero-allocation hot path. See the
+performance table in the [README](README.md) and reproduce with `make bench`.
