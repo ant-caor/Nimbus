@@ -56,6 +56,17 @@ patch releases never do.
   zero-allocation guarantee is now documented as unconditional for `string` keys
   (and allocation-free `KeyString` codecs); non-string, non-integer keys should
   supply `KeyString` for a zero-allocation hot path.
+- L2 per-key versions are now monotonic across **TTL expiry**. Previously the
+  version was derived from the live Redis hash and restarted at 1 once the entry
+  or its tombstone expired, so the "single monotonic version counter per key"
+  guarantee held only within a key's lifetime. The Lua scripts now seed an
+  absent key's version from the server clock (`(unixMillis << 10) | seq`) instead
+  of zero, so a re-mint after expiry always exceeds any prior version — without a
+  second key, a hash tag, or a cross-slot script. **Version values are now large,
+  opaque, clock-seeded numbers rather than a 1-based count**; callers must already
+  treat `Entry.Version` as opaque-and-monotonic, never assuming it starts at 1.
+  Covered by `TestVersionFloorMonotonicAcrossExpiry` and
+  `TestVersionFloorMonotonicAcrossTombstoneExpiry`.
 
 ### Fixed
 

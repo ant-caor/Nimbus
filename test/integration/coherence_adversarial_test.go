@@ -354,19 +354,20 @@ func TestConcurrentSetCASExactlyOneWinner(t *testing.T) {
 	l2a := redisstore.New[string](newRedisClient(t), store.JSON[string](), redisstore.WithKeyPrefix(prefix))
 	l2b := redisstore.New[string](newRedisClient(t), store.JSON[string](), redisstore.WithKeyPrefix(prefix))
 
-	// Seed version 1 so both racers read the same non-zero `expect`.
+	// Seed an entry so both racers read the same non-zero `expect`. The version
+	// is opaque (clock-seeded), so we capture it rather than assert a literal.
 	until := time.Now().Add(time.Hour)
 	seed, err := l2a.SetCAS(ctx, "k", "seed", store.ForceVersion, until, until, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), seed.Version)
+	require.NotZero(t, seed.Version)
 
 	// Both instances read the same authoritative version before writing.
 	curA, _, err := l2a.Load(ctx, "k")
 	require.NoError(t, err)
 	curB, _, err := l2b.Load(ctx, "k")
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), curA.Version)
-	require.Equal(t, uint64(1), curB.Version)
+	require.Equal(t, seed.Version, curA.Version)
+	require.Equal(t, seed.Version, curB.Version)
 
 	// Race two CAS writes from the same expected version. Exactly one must win.
 	type casResult struct {
@@ -407,14 +408,14 @@ func TestConcurrentSetCASExactlyOneWinner(t *testing.T) {
 	require.Equal(t, 1, winners, "exactly one CAS must win")
 	require.Equal(t, 1, losers, "exactly one CAS must lose with a version conflict")
 
-	// The version advanced by exactly one (1 -> 2): no double-bump, no corruption.
-	require.Equal(t, uint64(2), winningEntry.Version, "the winner minted version 2")
+	// The version advanced by exactly one: no double-bump, no corruption.
+	require.Equal(t, seed.Version+1, winningEntry.Version, "the winner minted exactly seed+1")
 
-	// L2 holds the winner's value at version 2, consistently from either handle.
+	// L2 holds the winner's value at the winning version, consistently from either handle.
 	got, ok, err := l2b.Load(ctx, "k")
 	require.NoError(t, err)
 	require.True(t, ok)
-	require.Equal(t, uint64(2), got.Version, "L2 settled at exactly version 2")
+	require.Equal(t, seed.Version+1, got.Version, "L2 settled at exactly seed+1")
 	require.Equal(t, winningEntry.Value, got.Value, "L2 holds the winner's value, uncorrupted")
 
 	// The loser's next CAS must now use the new version; using the stale expect

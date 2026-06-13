@@ -34,19 +34,21 @@ func TestRedisStoreVersioning(t *testing.T) {
 	ctx := context.Background()
 	until := time.Now().Add(time.Minute)
 
+	// The first version for an absent key is minted with expect=0. Its value is
+	// opaque (clock-seeded, not literally 1) but must be non-zero and monotonic.
 	e1, err := l2.SetCAS(ctx, "k", "v1", 0, until, until, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(1), e1.Version)
+	require.NotZero(t, e1.Version)
 
 	got, ok, err := l2.Load(ctx, "k")
 	require.NoError(t, err)
 	require.True(t, ok)
 	require.Equal(t, "v1", got.Value)
-	require.Equal(t, uint64(1), got.Version)
+	require.Equal(t, e1.Version, got.Version)
 
-	e2, err := l2.SetCAS(ctx, "k", "v2", 1, until, until, nil)
+	e2, err := l2.SetCAS(ctx, "k", "v2", e1.Version, until, until, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), e2.Version)
+	require.Equal(t, e1.Version+1, e2.Version, "an in-lifetime re-mint is exactly +1")
 }
 
 func TestSetCASConflict(t *testing.T) {
@@ -55,17 +57,84 @@ func TestSetCASConflict(t *testing.T) {
 	ctx := context.Background()
 	until := time.Now().Add(time.Minute)
 
-	_, err := l2.SetCAS(ctx, "k", "first", 0, until, until, nil)
-	require.NoError(t, err) // version 1
+	first, err := l2.SetCAS(ctx, "k", "first", 0, until, until, nil)
+	require.NoError(t, err)
 
 	// A second writer that still expects version 0 must lose.
 	_, err = l2.SetCAS(ctx, "k", "stale", 0, until, until, nil)
 	require.ErrorIs(t, err, store.ErrVersionConflict)
 
 	// Writing with the correct expected version succeeds.
-	e, err := l2.SetCAS(ctx, "k", "second", 1, until, until, nil)
+	e, err := l2.SetCAS(ctx, "k", "second", first.Version, until, until, nil)
 	require.NoError(t, err)
-	require.Equal(t, uint64(2), e.Version)
+	require.Equal(t, first.Version+1, e.Version)
+}
+
+// TestVersionFloorMonotonicAcrossExpiry proves the per-key version never resets
+// to a smaller value after the live entry TTLs out of Redis. Before the
+// clock-seed fix the version was derived from HGET ver and restarted at 1 once
+// the hash expired, which could let a slow in-flight fill holding a pre-expiry
+// expected version win a CAS it should have lost.
+func TestVersionFloorMonotonicAcrossExpiry(t *testing.T) {
+	l2 := newL2(t)
+	defer func() { _ = l2.Close() }()
+	ctx := context.Background()
+
+	// redisTTL floors a sub-second stale window to 1000ms, so the entry lives
+	// ~1s in Redis regardless of how close staleUntil is.
+	shortUntil := time.Now().Add(900 * time.Millisecond)
+	e1, err := l2.SetCAS(ctx, "k", "v1", store.ForceVersion, shortUntil, shortUntil, nil)
+	require.NoError(t, err)
+	require.NotZero(t, e1.Version)
+
+	// Wait until the hash is genuinely gone from Redis (not merely logically stale).
+	require.Eventually(t, func() bool {
+		_, ok, rerr := l2.Load(ctx, "k")
+		return rerr == nil && !ok
+	}, 5*time.Second, 100*time.Millisecond, "entry should TTL out of Redis")
+
+	// Re-mint after expiry: pre-fix this returned version 1 (< e1.Version).
+	until := time.Now().Add(time.Minute)
+	e2, err := l2.SetCAS(ctx, "k", "v2", store.ForceVersion, until, until, nil)
+	require.NoError(t, err)
+	require.Greater(t, e2.Version, e1.Version, "version must not reset after the hash expired")
+
+	// In-lifetime re-mint is still exactly +1, not another reseed.
+	e3, err := l2.SetCAS(ctx, "k", "v3", e2.Version, until, until, nil)
+	require.NoError(t, err)
+	require.Equal(t, e2.Version+1, e3.Version)
+}
+
+// TestVersionFloorMonotonicAcrossTombstoneExpiry proves the same property across
+// the expiry of an invalidation tombstone — the exact gap that motivated the
+// fix, since the tombstone is what gates a fill-after-invalidate.
+func TestVersionFloorMonotonicAcrossTombstoneExpiry(t *testing.T) {
+	l2 := redisstore.New[string](
+		newRedisClient(t), store.JSON[string](),
+		redisstore.WithKeyPrefix("k:"+t.Name()+":"),
+		redisstore.WithTombstoneTTL(time.Second), // expire fast for the test
+	)
+	defer func() { _ = l2.Close() }()
+	ctx := context.Background()
+	until := time.Now().Add(time.Minute)
+
+	e1, err := l2.SetCAS(ctx, "k", "v1", store.ForceVersion, until, until, nil)
+	require.NoError(t, err)
+
+	tombVer, ok, err := l2.CompareAndDelete(ctx, "k", store.ForceVersion)
+	require.NoError(t, err)
+	require.True(t, ok)
+	require.Greater(t, tombVer, e1.Version)
+
+	// Wait for the tombstone to TTL out: read() then reports version 0.
+	require.Eventually(t, func() bool {
+		got, _, rerr := l2.Load(ctx, "k")
+		return rerr == nil && got.Version == 0
+	}, 5*time.Second, 100*time.Millisecond, "tombstone should TTL out")
+
+	e2, err := l2.SetCAS(ctx, "k", "v2", store.ForceVersion, until, until, nil)
+	require.NoError(t, err)
+	require.Greater(t, e2.Version, tombVer, "version must exceed the expired tombstone's version")
 }
 
 // TestFillInvariantUnderInvalidate is the proof for the critical fill-after-
