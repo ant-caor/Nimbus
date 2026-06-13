@@ -43,6 +43,19 @@ patch releases never do.
 - Documentation: `README.md` and a design write-up in `DESIGN.md`.
 - Integration test suite (separate module) running against real Redis and the
   Pub/Sub emulator via testcontainers.
+- `store.TombstoneTTLer`, an optional interface a `VersionedStore` may implement
+  to report its tombstone lifetime (implemented by `redisstore`). `Build` uses it
+  to reject a configuration whose L2 tombstone TTL does not exceed the refresh
+  timeout, which would reopen the fill-after-invalidate race.
+
+### Changed
+
+- The default key renderer now maps integer keys via `strconv` instead of
+  `fmt.Sprint`, cutting a large-integer key on the read hot path from two
+  allocations to at most one (small magnitudes stay zero-alloc). The
+  zero-allocation guarantee is now documented as unconditional for `string` keys
+  (and allocation-free `KeyString` codecs); non-string, non-integer keys should
+  supply `KeyString` for a zero-allocation hot path.
 
 ### Fixed
 

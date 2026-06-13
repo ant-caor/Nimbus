@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/ant-caor/nimbus/internal/clock"
@@ -101,7 +102,9 @@ func (b *Builder[K, V]) RefreshTimeout(d time.Duration) *Builder[K, V] {
 func (b *Builder[K, V]) Clock(c clock.Clock) *Builder[K, V] { b.cfg.clk = c; return b }
 
 // KeyString overrides how a key K is rendered to the string used by L1, L2, and
-// the bus. The default handles string keys directly and uses fmt for the rest.
+// the bus. The default renders string keys directly and integer keys via strconv
+// (both allocation-light on the hot path) and falls back to fmt for any other
+// type; supply KeyString to keep non-string, non-integer keys zero-allocation.
 func (b *Builder[K, V]) KeyString(fn func(K) string) *Builder[K, V] { b.cfg.keyString = fn; return b }
 
 // Build validates the configuration and returns a ready Cache.
@@ -134,6 +137,23 @@ func (b *Builder[K, V]) Build() (Cache[K, V], error) {
 	if refreshTimeout <= 0 {
 		refreshTimeout = 5 * time.Second
 	}
+
+	// The fill-after-invalidate safety proof requires a tombstone to outlive the
+	// slowest in-flight fill: if the tombstone expires first, a slow refresh's CAS
+	// can land against a resurrected key and reinstate deleted data. We can only
+	// check what the builder knows — the refresh timeout. (A cold GetOrLoad miss
+	// is bounded by the caller's request context, not by us, so a caller running
+	// loaders longer than the tombstone TTL must size WithTombstoneTTL itself.)
+	if cfg.l2 != nil {
+		if t, ok := cfg.l2.(store.TombstoneTTLer); ok {
+			if ttl := t.TombstoneTTL(); ttl > 0 && ttl <= refreshTimeout {
+				return nil, fmt.Errorf("nimbus: L2 tombstone TTL (%s) must exceed the refresh timeout (%s): "+
+					"a tombstone that expires before a slow refresh completes reopens the fill-after-invalidate "+
+					"race; raise WithTombstoneTTL or lower RefreshTimeout", ttl, refreshTimeout)
+			}
+		}
+	}
+
 	var refresher refresh.Refresher
 	switch cfg.refresh {
 	case RefreshBackground:
@@ -181,9 +201,42 @@ func (b *Builder[K, V]) Build() (Cache[K, V], error) {
 	return c, nil
 }
 
+// defaultKeyString renders a key K to the string used by L1, L2, and the bus.
+//
+// String keys are the common case and cost zero allocations. Integer kinds take
+// an allocation-light strconv path rather than fmt.Sprint (which boxes into a
+// []any and is markedly heavier): small magnitudes (|n| < 100) hit strconv's
+// static table and stay zero-alloc, while larger values cost the one
+// unavoidable allocation for the rendered string. Any other key type (structs,
+// arrays, named non-integer types) falls back to fmt; such callers should
+// supply KeyString for a zero-allocation hot path. See invariant #4 and the
+// performance section of the README.
 func defaultKeyString[K comparable](k K) string {
 	if s, ok := any(k).(string); ok {
 		return s
 	}
-	return fmt.Sprint(k)
+	switch v := any(k).(type) {
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	case int32:
+		return strconv.FormatInt(int64(v), 10)
+	case int16:
+		return strconv.FormatInt(int64(v), 10)
+	case int8:
+		return strconv.FormatInt(int64(v), 10)
+	case uint:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint64:
+		return strconv.FormatUint(v, 10)
+	case uint32:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint16:
+		return strconv.FormatUint(uint64(v), 10)
+	case uint8:
+		return strconv.FormatUint(uint64(v), 10)
+	default:
+		return fmt.Sprint(k)
+	}
 }

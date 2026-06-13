@@ -240,6 +240,11 @@ func (s *Store[V]) DeleteByTag(ctx context.Context, tag string) ([]string, error
 // closes resources it did not create.
 func (s *Store[V]) Close() error { return nil }
 
+// TombstoneTTL reports the configured tombstone lifetime, implementing the
+// optional store.TombstoneTTLer interface so nimbus.Build can validate it
+// against the refresh timeout.
+func (s *Store[V]) TombstoneTTL() time.Duration { return s.cfg.tombstoneTTL }
+
 func (s *Store[V]) addTags(ctx context.Context, key string, tags []string) error {
 	for _, tag := range tags {
 		setKey := s.t(tag)
@@ -302,4 +307,7 @@ func parseVerFlag(res []rueidis.RedisMessage) (uint64, bool, error) {
 	return ver, flag == "1", nil
 }
 
-var _ store.VersionedStore[int] = (*Store[int])(nil)
+var (
+	_ store.VersionedStore[int] = (*Store[int])(nil)
+	_ store.TombstoneTTLer      = (*Store[int])(nil)
+)

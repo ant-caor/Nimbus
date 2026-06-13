@@ -89,7 +89,7 @@ The loader signals a missing key by returning `nimbus.ErrNotFound`, which trigge
 
 ## Performance
 
-Benchmarks (`go test -bench=. -benchmem`). Hot paths allocate **zero** times per operation. Numbers below are from an Apple-class CPU running the `darwin/amd64` toolchain under emulation, so treat them as indicative and relative, not absolute.
+Benchmarks (`go test -bench=. -benchmem`). Hot paths allocate **zero** times per operation for `string` keys (and any key type whose `KeyString` renders without allocating). Integer keys take an allocation-light `strconv` path — zero allocations for small magnitudes, at most one for the rendered key string otherwise — while other key types fall back to `fmt`; supply `KeyString` to keep them zero-alloc. Numbers below are from an Apple-class CPU running the `darwin/amd64` toolchain under emulation, so treat them as indicative and relative, not absolute.
 
 | Operation | Latency | Allocations |
 |---|---:|---:|

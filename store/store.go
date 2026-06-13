@@ -74,3 +74,13 @@ type VersionedStore[V any] interface {
 	// may be chunked or replaced by tag-epoch invalidation; see DESIGN.md.
 	DeleteByTag(ctx context.Context, tag string) ([]string, error)
 }
+
+// TombstoneTTLer is an optional interface a VersionedStore may implement to
+// report how long its invalidation tombstones live. nimbus's Build uses it to
+// verify the tombstone outlives the refresh window, which the
+// fill-after-invalidate safety proof requires: a tombstone that expires before
+// a slow in-flight fill completes lets that fill resurrect a deleted key. A
+// store that does not implement this is simply not validated.
+type TombstoneTTLer interface {
+	TombstoneTTL() time.Duration
+}
