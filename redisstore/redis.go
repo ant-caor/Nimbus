@@ -23,34 +23,61 @@ import (
 	"github.com/ant-caor/nimbus/store"
 )
 
+// Version layout. The per-key version must be monotonic across the key's whole
+// history, including after the live entry or its tombstone expires out of Redis
+// (HGET ver would otherwise read nil and a naive cur+1 would restart at 1,
+// letting a slow in-flight fill holding a pre-expiry expected version win a CAS
+// it should lose). When the hash is present we keep minting cur+1 (cheap, the
+// common path). When it is absent we SEED from the server clock as
+// (unixMillis << 10) | seq, starting seq at 1. Because wall-clock time only
+// advances across an expiry gap, a re-mint after expiry is always strictly
+// greater than any version the key carried before — without a second key, a
+// hash tag, or a cross-slot script (TIME takes no keys, so cluster routing is
+// unaffected). The 10-bit seq leaves ~1M mints/sec per key of headroom before
+// it borrows into the next millisecond, far above any single-key write rate;
+// (millis << 10) stays below 2^53 until ~2248, so the value is exact in Lua's
+// double and round-trips losslessly. tostring is avoided in favor of
+// string.format('%d', ...): Lua 5.1's default number format (%.14g) would
+// corrupt a 16-digit version. replicate_commands() switches to effects
+// replication so the non-deterministic TIME call is safe (a no-op on Redis 7+,
+// required on 6.x).
+const versionSeedLua = `
+local cur = tonumber(redis.call('HGET', KEYS[1], 'ver'))
+local function mint()
+  if cur then return cur + 1 end
+  local t = redis.call('TIME')
+  local ms = (tonumber(t[1]) * 1000) + math.floor(tonumber(t[2]) / 1000)
+  return (ms * 1024) + 1
+end`
+
 // setCAS mints the next version and writes a live value, guarded by an expected
 // version unless force is set. Returns {newOrCurrentVersion, "1" on success}.
 var setCAS = rueidis.NewLuaScript(`
-local cur = tonumber(redis.call('HGET', KEYS[1], 'ver')) or 0
-if ARGV[1] ~= '1' and cur ~= tonumber(ARGV[2]) then
-  return {tostring(cur), '0'}
+redis.replicate_commands()` + versionSeedLua + `
+if ARGV[1] ~= '1' and (cur or 0) ~= tonumber(ARGV[2]) then
+  return {string.format('%d', cur or 0), '0'}
 end
-local nv = cur + 1
+local nv = mint()
 redis.call('DEL', KEYS[1])
 redis.call('HSET', KEYS[1], 'ver', nv, 'val', ARGV[3], 'sa', ARGV[4], 'fu', ARGV[5], 'su', ARGV[6])
 local ttl = tonumber(ARGV[7])
 if ttl > 0 then redis.call('PEXPIRE', KEYS[1], ttl) end
-return {tostring(nv), '1'}
+return {string.format('%d', nv), '1'}
 `)
 
 // compareAndDelete bumps the version and leaves a tombstone, guarded so an older
 // invalidation cannot clobber a newer write unless force is set.
 var compareAndDelete = rueidis.NewLuaScript(`
-local cur = tonumber(redis.call('HGET', KEYS[1], 'ver')) or 0
-if ARGV[1] ~= '1' and tonumber(ARGV[2]) < cur then
-  return {tostring(cur), '0'}
+redis.replicate_commands()` + versionSeedLua + `
+if ARGV[1] ~= '1' and tonumber(ARGV[2]) < (cur or 0) then
+  return {string.format('%d', cur or 0), '0'}
 end
-local nv = cur + 1
+local nv = mint()
 redis.call('DEL', KEYS[1])
 redis.call('HSET', KEYS[1], 'ver', nv, 'del', '1')
 local ttl = tonumber(ARGV[3])
 if ttl > 0 then redis.call('PEXPIRE', KEYS[1], ttl) end
-return {tostring(nv), '1'}
+return {string.format('%d', nv), '1'}
 `)
 
 type config struct {

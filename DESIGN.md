@@ -96,8 +96,18 @@ is never observable.
 
 ## Version protocol
 
-There is a **single monotonic version counter per key**, minted only inside L2
-Lua scripts. The client never invents a version; it receives one.
+There is a **single monotonic version per key**, minted only inside L2 Lua
+scripts. The client never invents a version; it receives one. The version is
+monotonic across the key's **entire history**, including after the live entry or
+its tombstone expires out of Redis: while a hash is present the script mints
+`current + 1`, but when none exists it seeds from the server clock as
+`(unixMillis << 10) | seq` rather than restarting at 1. Wall-clock time only
+advances across an expiry gap, so a re-mint after expiry is always strictly
+greater than any version the key carried before — closing the narrow window
+where a slow fill holding a pre-expiry expected version could win a CAS against a
+key that had since expired and been re-minted from zero. This needs no second
+key and no hash tag (`TIME` takes no keys, so it never forces a cross-slot
+script).
 
 - `SetCAS(key, val, expect, …)` — increments and writes only if the current
   version equals `expect` (or `expect` is `ForceVersion`, for last-writer-wins
