@@ -60,14 +60,37 @@ func (s *shard[V]) set(key string, e store.Entry[V]) {
 		s.moveToFrontLocked(n)
 		return
 	}
+	s.insertLocked(key, e)
+}
+
+// setIfNewer installs e unless a live entry at an equal-or-greater version is
+// already present, gating the L1-stomp race. It reports whether it installed.
+func (s *shard[V]) setIfNewer(key string, e store.Entry[V]) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if n, ok := s.items[key]; ok {
+		// A live entry at an equal-or-newer version wins; do not stomp it with an
+		// older (or equal, hence equivalent) value. An expired entry is dead and
+		// is always replaced.
+		if !n.entry.Expired(s.clock.Now()) && e.Version <= n.entry.Version {
+			return false
+		}
+		n.entry = e
+		s.moveToFrontLocked(n)
+		return true
+	}
+	s.insertLocked(key, e)
+	return true
+}
+
+// insertLocked adds a new node for key and evicts the LRU tail if over capacity.
+func (s *shard[V]) insertLocked(key string, e store.Entry[V]) {
 	n := &node[V]{key: key, entry: e}
 	s.items[key] = n
 	s.pushFrontLocked(n)
-	if s.capacity > 0 && len(s.items) > s.capacity {
-		if s.tail != nil {
-			s.removeLocked(s.tail)
-			atomic.AddUint64(s.evictions, 1)
-		}
+	if s.capacity > 0 && len(s.items) > s.capacity && s.tail != nil {
+		s.removeLocked(s.tail)
+		atomic.AddUint64(s.evictions, 1)
 	}
 }
 
@@ -179,6 +202,12 @@ func (c *Cache[V]) Set(_ context.Context, key string, e store.Entry[V]) error {
 	return nil
 }
 
+// SetIfNewer implements store.ConditionalStore: a version-gated install that
+// will not stomp a live entry already holding an equal-or-greater version.
+func (c *Cache[V]) SetIfNewer(_ context.Context, key string, e store.Entry[V]) (bool, error) {
+	return c.shardFor(key).setIfNewer(key, e), nil
+}
+
 // Delete implements store.Store.
 func (c *Cache[V]) Delete(_ context.Context, key string) error {
 	c.shardFor(key).delete(key)
@@ -200,4 +229,7 @@ func (c *Cache[V]) Len() int {
 	return n
 }
 
-var _ store.Store[int] = (*Cache[int])(nil)
+var (
+	_ store.Store[int]            = (*Cache[int])(nil)
+	_ store.ConditionalStore[int] = (*Cache[int])(nil)
+)

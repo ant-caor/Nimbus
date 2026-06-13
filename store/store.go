@@ -42,6 +42,23 @@ type Store[V any] interface {
 	Close() error
 }
 
+// ConditionalStore is an optional interface a Store may implement to gate an
+// install on the entry version. nimbus uses it for versioned (L2-backed)
+// installs so a slow fill cannot stomp a newer entry that the bus or a
+// concurrent writer already placed in the tier with an older value (the
+// L1-stomp race). A Store that does not implement it falls back to an
+// unconditional Set, which is correct but unguarded.
+type ConditionalStore[V any] interface {
+	// SetIfNewer installs e and reports whether it installed. It installs when the
+	// tier holds no entry for key, when the stored entry has expired (it is dead,
+	// so it is replaced regardless of version), or when e carries a strictly
+	// greater Version than a still-live stored entry. A same-version install over
+	// a live entry is skipped: an equal version denotes the same authoritative
+	// write, so the stored entry is already equivalent. The comparison and install
+	// are atomic with respect to other operations on key.
+	SetIfNewer(ctx context.Context, key string, e Entry[V]) (installed bool, err error)
+}
+
 // VersionedStore is the contract for the authoritative, shared L2 tier. It is
 // the single source of versions and the source of truth for values.
 type VersionedStore[V any] interface {

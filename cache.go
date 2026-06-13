@@ -201,7 +201,7 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 	if ok && cur.Fresh(now) {
 		// L2 already holds a fresh value (e.g. another instance loaded it):
 		// promote to L1 without hitting the origin.
-		_ = c.l1.Set(ctx, ks, cur)
+		c.installL1(ctx, ks, cur)
 		return cur.Value, nil
 	}
 	expect := cur.Version // current authoritative version (0 if absent/tombstone)
@@ -222,12 +222,12 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 		}
 		if !deleted {
 			if e2, ok2, _ := c.l2.Load(ctx, ks); ok2 {
-				_ = c.l1.Set(ctx, ks, e2)
+				c.installL1(ctx, ks, e2)
 				return e2.Value, nil
 			}
 			return zero, ErrNotFound
 		}
-		_ = c.l1.Set(ctx, ks, c.negativeEntry(now, newV))
+		c.installL1(ctx, ks, c.negativeEntry(now, newV))
 		return zero, ErrNotFound
 	}
 	if err != nil {
@@ -240,7 +240,7 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 		// A concurrent writer changed L2 between our Load and SetCAS. Do not
 		// install our now-stale value; serve the winner from L2.
 		if e2, ok2, _ := c.l2.Load(ctx, ks); ok2 {
-			_ = c.l1.Set(ctx, ks, e2)
+			c.installL1(ctx, ks, e2)
 			return e2.Value, nil
 		}
 		return zero, ErrNotFound
@@ -248,7 +248,7 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 	if serr != nil {
 		return zero, serr
 	}
-	_ = c.l1.Set(ctx, ks, stored)
+	c.installL1(ctx, ks, stored)
 	return val, nil
 }
 
@@ -283,7 +283,7 @@ func (c *cache[K, V]) Set(ctx context.Context, key K, val V, opts ...EntryOption
 		if err != nil {
 			return err
 		}
-		_ = c.l1.Set(ctx, ks, stored)
+		c.installL1(ctx, ks, stored)
 		c.publish(ctx, invalidation.Event{
 			ID:        newID(),
 			Kind:      invalidation.KindKey,
@@ -433,6 +433,21 @@ func (c *cache[K, V]) indexTags(ks string, tags []string) {
 		}
 		set[ks] = struct{}{}
 	}
+}
+
+// installL1 puts a versioned entry into L1, gating on version when the L1
+// supports it (store.ConditionalStore) so a slow fill cannot stomp a newer
+// entry that the bus or a concurrent writer already installed. The window is
+// real: a Set or a bus-delivered eviction can run between this fill's SetCAS and
+// its L1 install. An L1 without the capability falls back to an unconditional
+// Set — correct, just unguarded. Used only for L2-minted (versioned) entries;
+// the L2-less paths write version 0 and use Set directly.
+func (c *cache[K, V]) installL1(ctx context.Context, ks string, e store.Entry[V]) {
+	if cs, ok := c.l1.(store.ConditionalStore[V]); ok {
+		_, _ = cs.SetIfNewer(ctx, ks, e)
+		return
+	}
+	_ = c.l1.Set(ctx, ks, e)
 }
 
 func (c *cache[K, V]) valueEntry(val V, now time.Time) store.Entry[V] {
