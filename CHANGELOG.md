@@ -74,6 +74,19 @@ patch releases never do.
 
 ### Fixed
 
+- **Scale tag invalidation.** `DeleteByTag` resolved a tag with `SMEMBERS` (a
+  whole-set reply) and tombstoned each member in a serial loop — N+1 round trips
+  and an O(N) server-side reply per invalidation. It now iterates members with
+  `SSCAN` (bounded replies) and pipelines the per-key tombstone scripts in
+  batches (one round trip per 256 keys, cluster-safe — each stays a single-key
+  script), and `addTags` pipelines its `SADD`/TTL refreshes in one round trip.
+  `InvalidateTag` broadcasts the resolved keys in bounded chunks (each with its
+  own event ID, so a receiver's dedupe ring does not drop all but the first)
+  instead of one oversized message. Behavior is unchanged: per-key versioned
+  tombstones, partial-but-resumable on error, and the set is never blind-deleted.
+  Covered by `TestDeleteByTagLargeTagScans`,
+  `TestDeleteByTagMintsMonotonicTombstones`, and
+  `TestDeleteByTagDoesNotNukeNewMembers`.
 - **Bound the request-bound refresh fan-out.** `RequestBound` previously spawned
   one detached goroutine and one loader call per distinct stale key, capped only
   by per-key dedup — so a synchronized stale wave (a deploy or a cold autoscaled
