@@ -49,6 +49,8 @@ patch releases never do.
   timeout, which would reopen the fill-after-invalidate race.
 - `store.ConditionalStore`, an optional interface a `Store` may implement for a
   version-gated install (`SetIfNewer`), implemented by `store/memory`.
+- `Builder.MaxConcurrentRefresh(n)` to cap concurrent request-bound
+  revalidations (default 16 per instance).
 
 ### Changed
 
@@ -72,6 +74,14 @@ patch releases never do.
 
 ### Fixed
 
+- **Bound the request-bound refresh fan-out.** `RequestBound` previously spawned
+  one detached goroutine and one loader call per distinct stale key, capped only
+  by per-key dedup — so a synchronized stale wave (a deploy or a cold autoscaled
+  fleet) could fan out into a thundering herd on the origin. Concurrent
+  revalidations are now bounded by a semaphore (`MaxConcurrentRefresh`, default
+  16 per instance) that drops on saturation, mirroring the background pool's
+  queue-full drop; stale-while-revalidate keeps serving meanwhile. Covered by
+  `TestRequestBoundCapsConcurrency` and `TestRequestBoundReclaimsTokens`.
 - Define and enforce a **degraded-mode contract when L2 is unreachable**. A
   `GetOrLoad` cold miss whose loader succeeds but whose versioned L2 write-back
   fails with a non-conflict (connectivity) error previously surfaced the raw Redis

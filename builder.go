@@ -25,20 +25,21 @@ type Builder[K comparable, V any] struct {
 }
 
 type config[K comparable, V any] struct {
-	loader         Loader[K, V]
-	l1             store.Store[V]
-	l2             store.VersionedStore[V]
-	bus            invalidation.Bus
-	clk            clock.Clock
-	keyString      func(K) string
-	fresh          time.Duration
-	staleWindow    time.Duration
-	negTTL         time.Duration
-	maxTTL         time.Duration
-	jitter         float64
-	refresh        RefreshMode
-	refreshWorkers int
-	refreshTimeout time.Duration
+	loader             Loader[K, V]
+	l1                 store.Store[V]
+	l2                 store.VersionedStore[V]
+	bus                invalidation.Bus
+	clk                clock.Clock
+	keyString          func(K) string
+	fresh              time.Duration
+	staleWindow        time.Duration
+	negTTL             time.Duration
+	maxTTL             time.Duration
+	jitter             float64
+	refresh            RefreshMode
+	refreshWorkers     int
+	refreshTimeout     time.Duration
+	refreshMaxInFlight int
 }
 
 // NewBuilder starts building a Cache around loader. Return ErrNotFound from the
@@ -95,6 +96,17 @@ func (b *Builder[K, V]) BackgroundRefresh(workers int) *Builder[K, V] {
 // run. Defaults to 5s.
 func (b *Builder[K, V]) RefreshTimeout(d time.Duration) *Builder[K, V] {
 	b.cfg.refreshTimeout = d
+	return b
+}
+
+// MaxConcurrentRefresh caps how many request-bound revalidations may run at
+// once, so a synchronized stale wave cannot fan out into an unbounded burst of
+// loader calls against the origin. On saturation a refresh is dropped (the entry
+// stays stale and re-triggers on the next request); stale-while-revalidate keeps
+// serving meanwhile. n <= 0 selects a CPU-scaled default. Has no effect in
+// background refresh mode, whose concurrency is its worker count.
+func (b *Builder[K, V]) MaxConcurrentRefresh(n int) *Builder[K, V] {
+	b.cfg.refreshMaxInFlight = n
 	return b
 }
 
@@ -163,7 +175,7 @@ func (b *Builder[K, V]) Build() (Cache[K, V], error) {
 		}
 		refresher = refresh.NewBackground(workers, 1024, refreshTimeout)
 	default:
-		refresher = refresh.NewRequestBound(refreshTimeout)
+		refresher = refresh.NewRequestBound(refreshTimeout, cfg.refreshMaxInFlight)
 	}
 
 	c := &cache[K, V]{
