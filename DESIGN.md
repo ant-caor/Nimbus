@@ -154,7 +154,15 @@ How the revalidation runs matters on Cloud Run:
   the instance is handling any request and may stall while the instance is idle.
   It is best-effort (bounded by `RefreshTimeout`), not a guarantee of completion;
   if it stalls, the next request re-triggers a still-stale entry. This is the
-  honest best you can do under request-only CPU.
+  honest best you can do under request-only CPU. Fan-out is **capped**
+  (`MaxConcurrentRefresh`, default 16 per instance): a synchronized stale wave —
+  a deploy, or a cold autoscaled fleet expiring many keys at once — would
+  otherwise spawn one goroutine and one loader call per distinct key, a
+  thundering herd on the origin. On saturation a refresh is dropped (the entry
+  stays stale and re-triggers later); stale-serve keeps serving meanwhile, so the
+  cap only slows how fast the stale set drains, never failing a read. Jitter on
+  the fresh TTL is the first line of defence against such waves; the cap is the
+  backstop. The cap is per-instance, so the fleet-wide bound is instances × cap.
 - **Background** runs on a worker pool off the request path. This **requires
   always-on CPU** (instance-based billing); otherwise the workers stall between
   requests. It is opt-in and documented as such.
