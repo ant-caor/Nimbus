@@ -6,6 +6,7 @@ go 1.25.0
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.0
+	github.com/Shopify/toxiproxy/v2 v2.12.0
 	github.com/ant-caor/nimbus v0.0.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/redis/rueidis v1.0.75
@@ -14,6 +15,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/gcloud v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.42.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.42.0
+	github.com/testcontainers/testcontainers-go/modules/toxiproxy v0.42.0
 )
 
 require (
