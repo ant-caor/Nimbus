@@ -72,6 +72,17 @@ patch releases never do.
 
 ### Fixed
 
+- Define and enforce a **degraded-mode contract when L2 is unreachable**. A
+  `GetOrLoad` cold miss whose loader succeeds but whose versioned L2 write-back
+  fails with a non-conflict (connectivity) error previously surfaced the raw Redis
+  error, failing a request the origin had already served. It now **fails open**:
+  the loader's result is returned (the value, or `ErrNotFound`) without writing an
+  uncoordinated entry to L1, so an L2 outage degrades to origin-load amplification
+  (bounded by singleflight) rather than a failed read or a stale cache. Read-only
+  paths (fresh/stale L1 hits, `Get`) keep serving; the write path
+  (`Set`/`Invalidate`/`InvalidateTag`) still hard-fails since the write to the
+  source of truth did not land. New `Stats.L2Errors` counts degraded fills.
+  Proven against real Redis with a toxiproxy cut/heal (`TestL2OutageDegradedModeContract`).
 - Close a narrow **L1-stomp** window: every L2-minted install into L1 is now
   version-gated (`SetIfNewer`), so a slow fill cannot overwrite a newer entry that
   a concurrent `Set` or a bus-delivered eviction placed in L1 between the fill's

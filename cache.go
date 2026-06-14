@@ -36,6 +36,7 @@ type Stats struct {
 	NegativeHits uint64
 	Refreshes    uint64 // stale-while-revalidate refreshes scheduled
 	BusEvicts    uint64 // L1 entries evicted by cross-instance invalidation events
+	L2Errors     uint64 // fills that degraded to an origin response because L2 was unreachable
 	Evictions    uint64
 	L1Len        int
 }
@@ -104,7 +105,7 @@ type cache[K comparable, V any] struct {
 	closed atomic.Bool
 
 	stats struct {
-		hits, staleHits, misses, loads, loadErrors, negHits, refreshes, busEvicts uint64
+		hits, staleHits, misses, loads, loadErrors, negHits, refreshes, busEvicts, l2Errors uint64
 	}
 }
 
@@ -218,12 +219,20 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 		// winner instead of caching a now-stale negative.
 		newV, deleted, derr := c.l2.CompareAndDelete(ctx, ks, expect)
 		if derr != nil {
-			return zero, derr
+			// Degraded mode: L2 is unreachable. The loader reported not-found
+			// (origin-authoritative), so return ErrNotFound without caching a
+			// negative we could not version. See the L2-outage contract in DESIGN.md.
+			atomic.AddUint64(&c.stats.l2Errors, 1)
+			return zero, ErrNotFound
 		}
 		if !deleted {
-			if e2, ok2, _ := c.l2.Load(ctx, ks); ok2 {
+			e2, ok2, lerr := c.l2.Load(ctx, ks)
+			if ok2 {
 				c.installL1(ctx, ks, e2)
 				return e2.Value, nil
+			}
+			if lerr != nil {
+				atomic.AddUint64(&c.stats.l2Errors, 1)
 			}
 			return zero, ErrNotFound
 		}
@@ -239,14 +248,26 @@ func (c *cache[K, V]) fill(ctx context.Context, key K, ks string) (V, error) {
 	if errors.Is(serr, store.ErrVersionConflict) {
 		// A concurrent writer changed L2 between our Load and SetCAS. Do not
 		// install our now-stale value; serve the winner from L2.
-		if e2, ok2, _ := c.l2.Load(ctx, ks); ok2 {
+		e2, ok2, lerr := c.l2.Load(ctx, ks)
+		if ok2 {
 			c.installL1(ctx, ks, e2)
 			return e2.Value, nil
+		}
+		if lerr != nil {
+			// L2 went unreachable on the recheck. Degrade to the loaded value
+			// (origin-authoritative, uncached) rather than reporting a false
+			// not-found for a key the winner may hold.
+			atomic.AddUint64(&c.stats.l2Errors, 1)
+			return val, nil
 		}
 		return zero, ErrNotFound
 	}
 	if serr != nil {
-		return zero, serr
+		// Degraded mode: L2 is unreachable on write-back. The loader produced val
+		// (origin-authoritative), so return it without caching rather than failing a
+		// request the origin already served. See the L2-outage contract in DESIGN.md.
+		atomic.AddUint64(&c.stats.l2Errors, 1)
+		return val, nil
 	}
 	c.installL1(ctx, ks, stored)
 	return val, nil
@@ -385,6 +406,7 @@ func (c *cache[K, V]) Stats() Stats {
 		NegativeHits: atomic.LoadUint64(&c.stats.negHits),
 		Refreshes:    atomic.LoadUint64(&c.stats.refreshes),
 		BusEvicts:    atomic.LoadUint64(&c.stats.busEvicts),
+		L2Errors:     atomic.LoadUint64(&c.stats.l2Errors),
 	}
 	if st, ok := c.l1.(interface {
 		Evictions() uint64

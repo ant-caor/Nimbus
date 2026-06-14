@@ -221,6 +221,33 @@ converges on its next L2 read.
   ordering significant and break the order-independence guarantee; it is a
   deliberate invariant.
 
+### Degraded mode when L2 is unreachable
+
+L2 is the source of truth, but it must not be a hard availability dependency for
+reads. When a fill hits a **non-conflict** L2 error (a `Load`, `SetCAS`, or
+`CompareAndDelete` that fails because Redis/Memorystore is unreachable — distinct
+from `ErrVersionConflict`, which is a normal CAS loss), the read path **fails open
+to the origin**:
+
+- `GetOrLoad` returns the loader's result — the value, or `ErrNotFound` for a
+  not-found loader. The origin is authoritative and already produced it, so a
+  request is never failed merely because the coordination tier is down.
+- The result is **not written to L1**: with no L2-minted version, an install would
+  be uncoordinated and could be served stale after recovery (it would not be
+  superseded until its TTL, since a fresh L1 hit short-circuits the next L2 read).
+  Declining to cache keeps the fill invariant intact — nothing un-versioned ever
+  enters L1 — at the cost of origin-load amplification during the outage, bounded
+  by singleflight collapsing concurrent misses. That is a capacity problem, never
+  a correctness one. The `Stats.L2Errors` counter makes the degradation visible.
+- A genuine **loader** error still propagates — degraded mode tolerates only a
+  failed L2 coordination of a *successful* load, never a real upstream failure.
+- Read-only paths that never touch L2 — a fresh or stale L1 hit and a `Get` peek —
+  are unaffected and keep serving while L2 is down.
+- The **write path** (`Set`, `Invalidate`, `InvalidateTag`) still hard-fails on an
+  L2 error: the write to the source of truth did not land, and the caller must
+  observe that. Silently evicting L1 and broadcasting would advertise an
+  invalidation for a write that never happened.
+
 ## Testing strategy and its blind spots
 
 - **Unit** (`-race`): the L1, the cache logic, stampede collapse (200 concurrent
@@ -229,12 +256,15 @@ converges on its next L2 read.
   process, each with its own L1 and subscription.
 - **Integration** (`test/integration`, testcontainers): the `redisstore`
   protocol against real Redis (versioning, CAS conflict, the fill invariant,
-  two-instance L2 sharing), an end-to-end cross-instance test, and
-  cross-instance invalidation over the real Pub/Sub emulator.
+  two-instance L2 sharing), an end-to-end cross-instance test, cross-instance
+  invalidation over the real Pub/Sub emulator, and the **L2-outage degraded-mode
+  contract** — a toxiproxy in front of a dedicated Redis is cut and healed to
+  prove reads fail open to the origin while L2 is down and resume normal
+  versioned fills on recovery.
 
 What the harness deliberately does **not** reproduce, and why you should not read
 too much into a green run: Cloud Run CPU throttling, cold-start and
-subscription-creation latency, network partitions and redelivery, and push
+subscription-creation latency, *partial* partitions and redelivery, and push
 load-balancer distribution. The Pub/Sub emulator also does not enforce
 subscription expiration or push authentication. Those are validated only on a
 real deployment.
