@@ -237,26 +237,90 @@ func (s *Store[V]) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-// DeleteByTag implements store.VersionedStore. It resolves the tag's members,
-// tombstones each, clears the set, and returns the affected keys so the caller
-// can broadcast them.
+// tagScanCount bounds each SSCAN reply, and tagPipelineBatch bounds each
+// pipelined tombstone round trip. They are kept equal so one scan page maps to
+// one pipeline. 256 amortizes the round trip to near-nothing on Memorystore
+// while keeping each reply and pipeline small enough to avoid head-of-line
+// stalls for co-tenant operations on the connection.
+const (
+	tagScanCount     = 256
+	tagPipelineBatch = 256
+)
+
+// DeleteByTag implements store.VersionedStore. It resolves the tag's members by
+// cursor (a bounded SSCAN reply, never a whole-set SMEMBERS), tombstones each
+// member by pipelining the per-key compareAndDelete script (one round trip per
+// batch, not per key), SREMs the members it tombstoned, and returns the affected
+// keys so the caller can broadcast them.
+//
+// On any error it returns the keys tombstoned so far; the tag set still holds
+// the un-SREM'd members, so a retry resumes. A member SADDed concurrently (after
+// the cursor paged past it) is never in a processed batch, so it survives for the
+// next InvalidateTag — we never blind-delete the whole set.
+//
+// Note: a key individually invalidated via CompareAndDelete is not removed from
+// its tag sets (no per-key reverse index), so it lingers as a dead member until
+// the tag TTL. Re-tombstoning such a member here is idempotent and harmless
+// (wasted work, not a correctness issue); O(1) tag invalidation via a tag-epoch
+// is the post-1.0 path. See DESIGN.md.
 func (s *Store[V]) DeleteByTag(ctx context.Context, tag string) ([]string, error) {
-	members, err := s.client.Do(ctx, s.client.B().Smembers().Key(s.t(tag)).Build()).AsStrSlice()
-	if err != nil {
-		return nil, err
-	}
-	processed := make([]string, 0, len(members))
-	for _, key := range members {
-		if _, _, err := s.CompareAndDelete(ctx, key, store.ForceVersion); err != nil {
-			return processed, err // caller broadcasts what we managed to tombstone
-		}
-		processed = append(processed, key)
-	}
-	// Remove only the members we processed, not the whole set: a key SADDed
-	// concurrently (after SMEMBERS) must survive so a later InvalidateTag finds it.
-	if len(processed) > 0 {
-		if err := s.client.Do(ctx, s.client.B().Srem().Key(s.t(tag)).Member(processed...).Build()).Error(); err != nil {
+	setKey := s.t(tag)
+	ttl := strconv.FormatInt(s.cfg.tombstoneTTL.Milliseconds(), 10)
+	processed := make([]string, 0, tagScanCount)
+
+	var cursor uint64
+	for {
+		se, err := s.client.Do(ctx, s.client.B().Sscan().Key(setKey).Cursor(cursor).Count(tagScanCount).Build()).AsScanEntry()
+		if err != nil {
 			return processed, err
+		}
+		cursor = se.Cursor
+
+		for start := 0; start < len(se.Elements); start += tagPipelineBatch {
+			end := min(start+tagPipelineBatch, len(se.Elements))
+			batch := se.Elements[start:end]
+
+			execs := make([]rueidis.LuaExec, len(batch))
+			for i, key := range batch {
+				// force=1 (last-writer-wins tombstone, mirroring
+				// CompareAndDelete with ForceVersion); the expect arg is unused.
+				execs[i] = rueidis.LuaExec{Keys: []string{s.k(key)}, Args: []string{"1", "0", ttl}}
+			}
+
+			done := make([]string, 0, len(batch))
+			var batchErr error
+			for i, r := range compareAndDelete.ExecMulti(ctx, s.client, execs...) {
+				arr, rerr := r.ToArray()
+				if rerr != nil {
+					if batchErr == nil {
+						batchErr = rerr
+					}
+					continue // leave this member in the set for a retry
+				}
+				if _, _, perr := parseVerFlag(arr); perr != nil {
+					if batchErr == nil {
+						batchErr = perr
+					}
+					continue
+				}
+				done = append(done, batch[i])
+			}
+
+			// SREM (and report) only the members we actually tombstoned.
+			if len(done) > 0 {
+				if err := s.client.Do(ctx, s.client.B().Srem().Key(setKey).Member(done...).Build()).Error(); err != nil {
+					processed = append(processed, done...)
+					return processed, err
+				}
+				processed = append(processed, done...)
+			}
+			if batchErr != nil {
+				return processed, batchErr
+			}
+		}
+
+		if cursor == 0 {
+			break
 		}
 	}
 	return processed, nil
@@ -272,14 +336,22 @@ func (s *Store[V]) Close() error { return nil }
 // against the refresh timeout.
 func (s *Store[V]) TombstoneTTL() time.Duration { return s.cfg.tombstoneTTL }
 
+// addTags associates key with each tag, pipelining the SADD (and the tag-TTL
+// refresh) across all tags in a single round trip rather than two per tag. The
+// PEXPIRE per add is what keeps an actively-used tag set alive; pipelined
+// alongside the SADD it costs no extra round trip.
 func (s *Store[V]) addTags(ctx context.Context, key string, tags []string) error {
+	cmds := make(rueidis.Commands, 0, len(tags)*2)
 	for _, tag := range tags {
 		setKey := s.t(tag)
-		if err := s.client.Do(ctx, s.client.B().Sadd().Key(setKey).Member(key).Build()).Error(); err != nil {
-			return err
-		}
+		cmds = append(cmds, s.client.B().Sadd().Key(setKey).Member(key).Build())
 		if s.cfg.tagTTL > 0 {
-			_ = s.client.Do(ctx, s.client.B().Pexpire().Key(setKey).Milliseconds(s.cfg.tagTTL.Milliseconds()).Build()).Error()
+			cmds = append(cmds, s.client.B().Pexpire().Key(setKey).Milliseconds(s.cfg.tagTTL.Milliseconds()).Build())
+		}
+	}
+	for _, r := range s.client.DoMulti(ctx, cmds...) {
+		if err := r.Error(); err != nil {
+			return err
 		}
 	}
 	return nil

@@ -137,6 +137,31 @@ idempotent, and a duplicate or reordered event can only drop an entry that is
 already gone. A bounded ring-buffer (`Dedupe`) suppresses redundant work but is
 not required for correctness.
 
+### Tag invalidation
+
+A `Set` with tags adds the key to each tag's Redis set (`SADD`, pipelined with a
+TTL refresh). `InvalidateTag` resolves a tag's members and tombstones each.
+Because a per-key tombstone must mint that key's own version (so a slow in-flight
+fill still loses its CAS), the keys cannot be tombstoned by one multi-key script
+— that would also `CROSSSLOT` on a Redis Cluster. Instead `DeleteByTag` iterates
+members with `SSCAN` (a bounded reply, never a whole-set `SMEMBERS`) and
+**pipelines** the per-key tombstone scripts in batches, turning N serial round
+trips into N/256. It `SREM`s only the members it tombstoned, so a member added
+concurrently (after the cursor passed it) survives for the next call — the set is
+never blind-deleted. The resolved key list is broadcast in **bounded chunks**
+(each its own event ID) rather than one oversized message. Invalidation is not
+atomic across a tag's keys: on a partial failure the tombstoned members are
+broadcast and the rest stay in the set for a resumable retry, consistent with the
+eventually-consistent contract.
+
+A key individually invalidated is not removed from its tag sets (there is no
+per-key reverse index), so it lingers as a dead member until the tag TTL and is
+re-tombstoned — idempotently, harmlessly — on the next `InvalidateTag`. That is
+wasted work, not a correctness issue. O(1) tag invalidation via a per-tag
+**epoch** (a key is valid only if its stored epoch matches the tag's current
+epoch) is the post-1.0 path; it makes both the fan-out and the reverse-cleanup
+moot.
+
 ## Stale-while-revalidate and the Cloud Run CPU model
 
 An entry has a fresh window and an additional stale window. Within the stale

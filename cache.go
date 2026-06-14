@@ -383,12 +383,17 @@ func (c *cache[K, V]) InvalidateTag(ctx context.Context, tag string) error {
 	for _, ks := range keys {
 		_ = c.l1.Delete(ctx, ks)
 	}
-	if len(keys) > 0 {
+	// Broadcast in bounded chunks: one Event carrying thousands of keys would be
+	// an oversized bus message, and each chunk needs its own ID or a receiver's
+	// dedupe ring would drop every chunk after the first.
+	const broadcastChunk = 256
+	for start := 0; start < len(keys); start += broadcastChunk {
+		end := min(start+broadcastChunk, len(keys))
 		c.publish(ctx, invalidation.Event{
 			ID:        newID(),
 			Kind:      invalidation.KindTag,
 			Tag:       tag,
-			Keys:      keys,
+			Keys:      keys[start:end],
 			OriginID:  c.originID,
 			EmittedAt: c.clk.Now(),
 		})
