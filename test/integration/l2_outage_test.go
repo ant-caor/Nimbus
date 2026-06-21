@@ -310,11 +310,17 @@ func TestL2OutageDegradedModeContract(t *testing.T) {
 	//    lazily after the heal, so retry until B's L2 read succeeds and promotes.
 	require.Eventually(t, func() bool {
 		v, err := b.GetOrLoad(ctx, recoveryKey)
-		return err == nil && v == "origin-"+recoveryKey
-	}, 10*time.Second, 100*time.Millisecond, "b must promote the recovered value from the shared L2")
-	if _, ok, _ := b.Get(ctx, recoveryKey); !ok {
-		t.Fatal("b should hold the recovered key before invalidation")
-	}
+		if err != nil || v != "origin-"+recoveryKey {
+			return false
+		}
+		// GetOrLoad can return the value via the degraded loader-only path while b's
+		// rueidis is still re-dialing after the heal, and that path deliberately
+		// does NOT populate L1. Require the value to actually land in b's L1 — a
+		// true promotion from the shared L2 — which is what "b holds the recovered
+		// key" means and what the cross-instance eviction below needs to observe.
+		_, ok, _ := b.Get(ctx, recoveryKey)
+		return ok
+	}, 10*time.Second, 100*time.Millisecond, "b must promote the recovered value from the shared L2 into its L1")
 
 	// Invalidate is a write against L2 (a versioned tombstone) and is NOT covered by
 	// the degraded-mode read contract, so it legitimately surfaces a connectivity
