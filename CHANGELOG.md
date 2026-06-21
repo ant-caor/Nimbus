@@ -9,6 +9,8 @@ patch releases never do.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-06-21
+
 ### Added
 
 - Core cache: a generic `Cache[K, V]` with a fluent `Builder`, read-through
@@ -146,4 +148,5 @@ patch releases never do.
   could be masked by a stale negative for the whole `NegativeTTL`. Covered by
   `TestNegativeFillInvariantUnderWrite`.
 
-[Unreleased]: https://github.com/ant-caor/nimbus/commits/main
+[Unreleased]: https://github.com/ant-caor/nimbus/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/ant-caor/nimbus/releases/tag/v0.1.0

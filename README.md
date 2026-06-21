@@ -9,7 +9,7 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Go](https://img.shields.io/badge/go-1.25+-00ADD8.svg)](go.mod)
 
-> **Status: pre-v0.1.** L1, L2 (Redis), stampede protection, stale-while-revalidate, the **cross-instance Pub/Sub bus**, OpenTelemetry metrics, and a deployable Cloud Run example (Dockerfile + Terraform) are all implemented and tested (integration against real Redis and the Pub/Sub emulator via testcontainers). APIs may still change before v0.1.
+> **Status: v0.1.0.** L1, L2 (Redis), stampede protection, stale-while-revalidate, the **cross-instance Pub/Sub bus**, OpenTelemetry metrics, and a deployable Cloud Run example (Dockerfile + Terraform) are all implemented and tested (integration against real Redis and the Pub/Sub emulator via testcontainers). Pre-1.0: minor (`0.x`) releases may still change the API; patch releases never do.
 
 ---
 
