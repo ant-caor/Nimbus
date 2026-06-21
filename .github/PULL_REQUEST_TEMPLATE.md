@@ -21,5 +21,5 @@
 - [ ] `gofmt` and `golangci-lint run` are clean
 - [ ] New behavior has unit tests; new backends/transports have an integration test
 - [ ] Hot-path changes include or update a benchmark
-- [ ] Public API changes are reflected in the docs and `CHANGELOG.md`
+- [ ] User-facing changes add a `CHANGELOG.md` entry under `[Unreleased]` (and update the docs); internal-only PRs carry the `skip-changelog` label
 - [ ] Commits are signed off (`git commit -s`, see CONTRIBUTING.md)

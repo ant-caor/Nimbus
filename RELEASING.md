@@ -17,7 +17,7 @@ the repo root):
 | `github.com/ant-caor/nimbus` (core) | `vX.Y.Z` | yes |
 | `github.com/ant-caor/nimbus/metrics` | `metrics/vX.Y.Z` | yes |
 | `github.com/ant-caor/nimbus/invalidation/gcppubsub` | `invalidation/gcppubsub/vX.Y.Z` | yes |
-| `examples/cloudrun`, `demo/local` | — | no (package main) |
+| `examples/cloudrun`, `examples/redisbus`, `demo/local` | — | no (package main) |
 | `test/integration` | — | no (test infra) |
 
 The sub-modules **import the core**, so always **release the core first**: a
