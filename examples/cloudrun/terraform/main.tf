@@ -91,6 +91,17 @@ resource "google_cloud_run_v2_service" "svc" {
         name  = "PUBSUB_TOPIC"
         value = google_pubsub_topic.inval.name
       }
+      # OIDC push verification (defense-in-depth, in-process). The service checks
+      # the push token's "aud" against PUSH_AUDIENCE and its "email" against
+      # PUSH_SA_EMAIL; both must match the oidc_token block on the subscription.
+      env {
+        name  = "PUSH_AUDIENCE"
+        value = var.push_audience
+      }
+      env {
+        name  = "PUSH_SA_EMAIL"
+        value = google_service_account.push.email
+      }
     }
   }
 
@@ -121,6 +132,10 @@ resource "google_pubsub_subscription" "push" {
     push_endpoint = "${google_cloud_run_v2_service.svc.uri}/_ah/push"
     oidc_token {
       service_account_email = google_service_account.push.email
+      # Explicit, stable audience the service verifies in-process (see
+      # var.push_audience). Defaults to the endpoint URL when omitted, but a
+      # fixed value lets the service compare without depending on its own URI.
+      audience = var.push_audience
     }
   }
 

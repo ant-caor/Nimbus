@@ -1,3 +1,8 @@
 project_id = "your-gcp-project"
 region     = "europe-west1"
 image      = "europe-west1-docker.pkg.dev/your-gcp-project/nimbus/nimbus:latest"
+
+# Optional: explicit OIDC audience for the Pub/Sub push token (the service
+# verifies the token's "aud" claim against this). Defaults to a stable value;
+# override only if you change PUSH_AUDIENCE on the service too.
+# push_audience = "nimbus-invalidation-push"

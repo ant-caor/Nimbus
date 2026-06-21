@@ -5,6 +5,7 @@ package gcppubsub
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/ant-caor/nimbus/invalidation"
@@ -26,11 +27,36 @@ type pushEnvelope struct {
 // so a push subscription can deliver invalidations inside a request, which is
 // throttle-safe under request-only CPU allocation (unlike a streaming pull).
 //
-// It does not authenticate the request; put it behind OIDC push authentication
-// (see examples/cloudrun). It always returns 204 for a well-formed envelope so
-// Pub/Sub does not redeliver, including for undecodable payloads.
+// This handler does NOT verify the request itself: it relies on a network-level
+// guard (the Cloud Run run.invoker IAM binding for the push service account).
+// For in-process defense-in-depth, construct a PushBus with WithPushAuth, whose
+// Handler() verifies the Pub/Sub OIDC token before dispatching; that path is
+// recommended for production. PushHandler stays available unauthenticated for
+// advanced users who terminate auth elsewhere.
+//
+// It always returns 204 for a well-formed envelope so Pub/Sub does not
+// redeliver, including for undecodable payloads.
 func PushHandler(handler func(invalidation.Event)) http.Handler {
+	return pushHandler(handler, nil)
+}
+
+// pushHandler is the shared implementation. When auth is non-nil it verifies the
+// request's OIDC token first, returning 401/403 on failure and never reaching
+// the dispatch path. When auth is nil the behavior is identical to the legacy
+// unauthenticated PushHandler.
+func pushHandler(handler func(invalidation.Event), auth *pushAuth) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if auth != nil {
+			if err := auth.authenticate(r); err != nil {
+				var ae *authError
+				if errors.As(err, &ae) {
+					http.Error(w, ae.msg, ae.status)
+				} else {
+					http.Error(w, "unauthorized", http.StatusUnauthorized)
+				}
+				return
+			}
+		}
 		var env pushEnvelope
 		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
 			http.Error(w, "invalid push envelope", http.StatusBadRequest)

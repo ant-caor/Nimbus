@@ -34,6 +34,13 @@ func main() {
 	topic := envOr("PUBSUB_TOPIC", "nimbus-invalidation")
 	port := envOr("PORT", "8080")
 
+	// OIDC push verification (defense-in-depth alongside the run.invoker IAM
+	// binding). PUSH_AUDIENCE is the audience configured on the subscription's
+	// oidc_token (the push endpoint URL); PUSH_SA_EMAIL is the push service
+	// account whose JWT "email" claim is allowlisted. Terraform sets both.
+	pushAudience := os.Getenv("PUSH_AUDIENCE")
+	pushSAEmail := os.Getenv("PUSH_SA_EMAIL")
+
 	rdb, err := rueidis.NewClient(rueidis.ClientOption{InitAddress: []string{redisAddr}, DisableCache: true})
 	if err != nil {
 		log.Fatalf("redis: %v", err)
@@ -46,7 +53,17 @@ func main() {
 	}
 	defer func() { _ = psClient.Close() }()
 
-	bus, err := gcppubsub.NewPush(ctx, psClient, topic)
+	var pushOpts []gcppubsub.PushOption
+	if pushAudience != "" && pushSAEmail != "" {
+		// Verify the Pub/Sub OIDC token in-process before dispatching: 401 on a
+		// bad/absent token, 403 on a wrong audience or non-allowlisted account.
+		pushOpts = append(pushOpts, gcppubsub.WithPushAuth(pushAudience, pushSAEmail))
+		log.Printf("push endpoint OIDC verification enabled (audience=%s)", pushAudience)
+	} else {
+		log.Printf("WARNING: PUSH_AUDIENCE/PUSH_SA_EMAIL unset; /_ah/push relies on IAM only")
+	}
+
+	bus, err := gcppubsub.NewPush(ctx, psClient, topic, pushOpts...)
 	if err != nil {
 		log.Fatalf("bus: %v", err)
 	}
@@ -97,8 +114,9 @@ func main() {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	// Pub/Sub push subscription delivers cross-instance invalidations here. It is
-	// protected by OIDC push authentication (configured in Terraform).
+	// Pub/Sub push subscription delivers cross-instance invalidations here. The
+	// handler verifies the Pub/Sub OIDC token in-process (WithPushAuth above) on
+	// top of the Cloud Run run.invoker IAM binding configured in Terraform.
 	mux.Handle("POST /_ah/push", bus.Handler())
 
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
