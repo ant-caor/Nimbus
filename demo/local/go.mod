@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	cloud.google.com/go/pubsub/v2 v2.6.0
-	github.com/ant-caor/nimbus v0.0.0
+	github.com/ant-caor/nimbus v0.1.0
 	github.com/ant-caor/nimbus/invalidation/gcppubsub v0.0.0
 	github.com/redis/rueidis v1.0.75
 )

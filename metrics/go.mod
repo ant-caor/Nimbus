@@ -3,7 +3,7 @@ module github.com/ant-caor/nimbus/metrics
 go 1.25.0
 
 require (
-	github.com/ant-caor/nimbus v0.0.0
+	github.com/ant-caor/nimbus v0.1.0
 	go.opentelemetry.io/otel/metric v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 )
@@ -20,5 +20,3 @@ require (
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 )
-
-replace github.com/ant-caor/nimbus => ..
