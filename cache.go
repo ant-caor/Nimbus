@@ -64,17 +64,26 @@ type Cache[K comparable, V any] interface {
 	Close() error
 }
 
-// EntryOption customizes a single Set.
-type EntryOption func(*entryMeta)
+// EntryOption customizes a single Set. It is an opaque, sealed interface:
+// options are produced only by the With* constructors in this package, which
+// keeps the set of options extensible without exposing the entry's internals or
+// widening the public API surface.
+type EntryOption interface {
+	applyEntry(*entryMeta)
+}
 
 type entryMeta struct {
 	tags []string
 }
 
+type entryOptionFunc func(*entryMeta)
+
+func (f entryOptionFunc) applyEntry(m *entryMeta) { f(m) }
+
 // WithTags associates the written key with one or more tags so it can later be
 // invalidated via InvalidateTag.
 func WithTags(tags ...string) EntryOption {
-	return func(m *entryMeta) { m.tags = append(m.tags, tags...) }
+	return entryOptionFunc(func(m *entryMeta) { m.tags = append(m.tags, tags...) })
 }
 
 type cache[K comparable, V any] struct {
@@ -293,7 +302,7 @@ func (c *cache[K, V]) Set(ctx context.Context, key K, val V, opts ...EntryOption
 	}
 	var em entryMeta
 	for _, o := range opts {
-		o(&em)
+		o.applyEntry(&em)
 	}
 	ks := c.keyString(key)
 	now := c.clk.Now()
