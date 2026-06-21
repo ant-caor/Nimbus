@@ -5,6 +5,7 @@
 /bin/
 # Stray `go build` output from the package-main example/demo modules.
 /examples/cloudrun/cloudrun
+/examples/redisbus/redisbus
 /demo/local/local
 
 # Go workspace files

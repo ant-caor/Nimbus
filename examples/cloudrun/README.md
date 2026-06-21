@@ -62,6 +62,18 @@ The `loadItem` function in `main.go` is a placeholder; replace it with your real
 backend and return `nimbus.ErrNotFound` for missing items to enable negative
 caching.
 
+## Metrics (OpenTelemetry)
+
+Set `METRICS=1` to wire the `metrics` adapter after `Build()`. It registers
+asynchronous OpenTelemetry instruments that observe `cache.Stats()` (so it adds
+nothing to the hot path) and reports `nimbus.hits`, `.misses`, `.loads`,
+`.bus_evicts`, `.l1.entries`, and the rest. The example uses the **stdout**
+exporter to stay dependency-light — on Cloud Run the periodic dump lands in Cloud
+Logging. For real telemetry, swap `stdoutmetric` for the Google Cloud Monitoring
+exporter or an OTLP exporter (e.g. to an OpenTelemetry Collector) in
+`setupMetrics`; the `metrics.Register` call is unchanged. The registration is
+torn down (`Unregister` + provider `Shutdown`) on graceful shutdown.
+
 ## Cleanup
 
 ```sh

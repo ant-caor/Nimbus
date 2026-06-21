@@ -19,9 +19,12 @@ import (
 
 	pubsub "cloud.google.com/go/pubsub/v2"
 	"github.com/redis/rueidis"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 
 	"github.com/ant-caor/nimbus"
 	"github.com/ant-caor/nimbus/invalidation/gcppubsub"
+	"github.com/ant-caor/nimbus/metrics"
 	"github.com/ant-caor/nimbus/redisstore"
 	"github.com/ant-caor/nimbus/store"
 	"github.com/ant-caor/nimbus/store/memory"
@@ -61,6 +64,16 @@ func main() {
 		Build()
 	if err != nil {
 		log.Fatalf("cache: %v", err)
+	}
+
+	// OpenTelemetry metrics, opt-in via METRICS=1. The metrics adapter observes
+	// Stats() through asynchronous instruments, so it costs nothing on the hot
+	// path. We use the stdout exporter to keep the example dependency-light (logs
+	// appear in Cloud Logging); swap it for the Google Cloud Monitoring or an
+	// OTLP exporter in production. Register after Build and Unregister on close.
+	if os.Getenv("METRICS") == "1" {
+		stopMetrics := setupMetrics(cache)
+		defer stopMetrics()
 	}
 
 	mux := http.NewServeMux()
@@ -122,6 +135,32 @@ func main() {
 	log.Printf("nimbus cloudrun listening on :%s", port)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
+	}
+}
+
+// setupMetrics wires the nimbus OpenTelemetry adapter to a meter backed by a
+// periodic stdout exporter and returns a func that unregisters the callback and
+// shuts the provider down. The stdout exporter keeps the example free of a heavy
+// cloud client; replace it with a Cloud Monitoring or OTLP exporter to ship
+// metrics off-instance.
+func setupMetrics(cache nimbus.Cache[string, string]) func() {
+	exp, err := stdoutmetric.New()
+	if err != nil {
+		log.Fatalf("metrics exporter: %v", err)
+	}
+	provider := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp, sdkmetric.WithInterval(60*time.Second))),
+	)
+	reg, err := metrics.Register(provider.Meter("nimbus/examples/cloudrun"), cache)
+	if err != nil {
+		log.Fatalf("metrics register: %v", err)
+	}
+	log.Print("nimbus metrics: OpenTelemetry stdout exporter enabled")
+	return func() {
+		_ = reg.Unregister()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = provider.Shutdown(shutCtx)
 	}
 }
 

@@ -37,10 +37,20 @@ patch releases never do.
   `go get` of the respective module. The Redis Pub/Sub bus + Redis L2 give a
   fully GCP-free coherence path that runs on any cloud or on-prem.
 - Examples: an L1-only `examples/basic` (in the core module), a deployable
-  `examples/cloudrun` (distroless Dockerfile + Terraform + OIDC push), and a
-  local `demo/local` (docker compose with Redis and the Pub/Sub emulator); the
-  two GCP-using examples are their own modules and are never published.
-- Documentation: `README.md` and a design write-up in `DESIGN.md`.
+  `examples/cloudrun` (distroless Dockerfile + Terraform + OIDC push), a
+  cloud-agnostic `examples/redisbus` (L1 + Redis L2 + Redis Pub/Sub bus, no GCP
+  and no emulator), and a local `demo/local` (docker compose with Redis and the
+  Pub/Sub emulator); the GCP-using and standalone examples are their own modules
+  and are never published.
+- `examples/redisbus`: a runnable demonstration of the GCP-free cross-instance
+  coherence path — two in-process cache instances sharing one Redis show a `Set`
+  on one evicting the other's L1 over the Redis Pub/Sub bus.
+- `examples/cloudrun` now wires the `metrics` module after `Build()` (gated by
+  `METRICS=1`), registering the OpenTelemetry adapter against a meter backed by a
+  stdout exporter to show end-to-end observability without a heavy cloud client.
+- Documentation: `README.md` (now including an **Alternatives / comparison**
+  section against groupcache and Ristretto/Otter) and a design write-up in
+  `DESIGN.md`.
 - Integration test suite (separate module) running against real Redis and the
   Pub/Sub emulator via testcontainers.
 - `store.TombstoneTTLer`, an optional interface a `VersionedStore` may implement
