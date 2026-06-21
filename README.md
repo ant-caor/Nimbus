@@ -179,6 +179,38 @@ Nimbus is for read-heavy, high-traffic services on autoscaling Cloud Run where c
 
 ---
 
+## Alternatives / comparison
+
+Most Go caching libraries answer a different question. Ristretto and Otter are
+**single-instance** in-process caches optimized for raw eviction throughput;
+groupcache does **peer-to-peer** replication across long-lived processes. Nimbus
+is built for **ephemeral, autoscaling instances** that need a shared, versioned
+source of truth and cross-instance coherence.
+
+| | **Nimbus** | **groupcache** | **Ristretto / Otter** |
+|---|---|---|---|
+| Topology | L1 + versioned shared L2 + invalidation bus | peer-to-peer per-process replication | single-instance in-process |
+| Cross-instance coherence | yes (bus eviction + L2 versions) | partial (peers fill from each other; no shared store) | none |
+| Shared source of truth | yes — versioned Redis L2 | no | no |
+| Invalidation / writes | `Set`/`Invalidate`/`InvalidateTag` + TTL + SWR | immutable values, no TTL; only coarse `Remove` | TTL/eviction + explicit delete, single instance |
+| Stampede protection | yes (singleflight, cross-instance via L2) | yes (cluster-wide; owner peer loads) | Ristretto: no; Otter v2: loader single-flight |
+| Fits scale-to-zero / autoscaling | yes — designed for it | poor (peers are long-lived, addressed individually) | n/a (one instance) |
+| Cloud coupling | GCP **or** cloud-agnostic (Redis L2 + Redis Pub/Sub bus) | none | none |
+| Primary strength | serverless coherence across replicas | LAN peer fan-out for static-ish data | fastest single-node eviction |
+
+**Use Nimbus** when you need cross-instance coherence on ephemeral, autoscaling
+instances (Cloud Run, Knative, autoscaled containers): cold starts stampede your
+origin, requests land on any replica, and you cannot address instances to
+invalidate them. **Use [groupcache](https://github.com/golang/groupcache)** when
+a fixed set of long-lived peers can replicate mostly-immutable values among
+themselves. **Use [Ristretto](https://github.com/dgraph-io/ristretto) or
+[Otter](https://github.com/maypok86/otter)** when a single instance with plenty
+of memory suffices and you just want the fastest in-process eviction — Nimbus
+deliberately does not try to out-compete them there, and its hand-written L1 sits
+behind the `store.Store` interface so a faster engine can be dropped in.
+
+---
+
 ## Design notes
 
 The in-memory cache space in Go is well served by [Ristretto](https://github.com/dgraph-io/ristretto) and [Otter](https://github.com/maypok86/otter). Nimbus does not try to out-compete them on raw eviction; its value is the **serverless orchestration layer**: tiering, the versioned fill invariant, cross-instance coherence, and a deployable reference. The L1 is hand-written behind the `store.Store` interface, so a faster engine can be dropped in later.
