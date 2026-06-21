@@ -126,11 +126,13 @@ func TestPoisonMessageDropped(t *testing.T) {
 	for _, p := range poison {
 		t.Run(p, func(t *testing.T) {
 			ev, ok := decode(p)
-			if p == `null` || p == `[]` {
-				// These decode without error into the zero Event; the contract
-				// is only "no panic, no torn subscription". Verify no panic and
-				// move on.
-				_ = ev
+			if p == `null` {
+				// JSON null is the only input that decodes WITHOUT error, into the
+				// zero Event (an array like `[]` DOES error and must be dropped).
+				// The contract for null is "no panic, decodes to the zero Event".
+				if !ok || ev.ID != "" {
+					t.Errorf("decode(%q) = (%+v, ok=%v), want zero Event with ok=true", p, ev, ok)
+				}
 				return
 			}
 			if ok {

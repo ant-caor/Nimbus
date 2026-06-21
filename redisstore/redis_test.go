@@ -7,6 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/rueidis"
+
 	"github.com/ant-caor/nimbus/store"
 )
 
@@ -16,13 +18,14 @@ import (
 // versions server-side, so only a real interpreter can prove them). Here we
 // cover the deterministic Go helpers that need neither a client nor Docker.
 //
-// parseUnixNano and parseVerFlag are intentionally NOT unit-tested: both take a
-// rueidis.RedisMessage / []rueidis.RedisMessage, whose fields (typ, bytes,
-// intlen) are unexported and have no exported constructor. A meaningful value
-// can only be built by the rueidis mock package, and adding it would pollute the
-// core module's dependency graph. A zero-value RedisMessage carries typ==0,
-// which is no valid RESP type, so it cannot stand in for a Lua reply. Their
-// behavior is exercised end-to-end in test/integration instead.
+// The SUCCESS paths of parseUnixNano and parseVerFlag are not unit-tested: they
+// need a populated rueidis.RedisMessage, whose fields (typ, bytes, intlen) are
+// unexported with no exported constructor, so a meaningful value can only be
+// built by the rueidis mock package — adding it would pollute the core module's
+// dependency graph. A zero-value RedisMessage carries typ==0, which is no valid
+// RESP type, so it cannot stand in for a real Lua reply. The happy paths are
+// exercised end-to-end in test/integration. The error/guard branches, however,
+// ARE reachable with nil/zero values and are covered below.
 
 func TestBoolArg(t *testing.T) {
 	if got := boolArg(true); got != "1" {
@@ -30,6 +33,31 @@ func TestBoolArg(t *testing.T) {
 	}
 	if got := boolArg(false); got != "0" {
 		t.Errorf("boolArg(false) = %q, want %q", got, "0")
+	}
+}
+
+// TestParseVerFlagShortReply covers the length guard: a script reply must carry
+// at least [version, flag]; anything shorter is a protocol violation and must
+// surface as an error rather than a silent zero version. Reachable with nil/zero
+// slices — no populated RedisMessage needed.
+func TestParseVerFlagShortReply(t *testing.T) {
+	for _, res := range [][]rueidis.RedisMessage{
+		nil,                             // len 0
+		make([]rueidis.RedisMessage, 1), // len 1
+	} {
+		if _, _, err := parseVerFlag(res); err == nil {
+			t.Errorf("parseVerFlag(len=%d) = nil error, want error", len(res))
+		}
+	}
+}
+
+// TestParseUnixNanoMalformedIsZeroTime covers the fallback branch: a value that
+// is not a parseable unix-nano string yields the zero time rather than a panic
+// or garbage. A zero-value RedisMessage is not a valid string reply, so it
+// exercises the ToString/ParseInt error path.
+func TestParseUnixNanoMalformedIsZeroTime(t *testing.T) {
+	if got := parseUnixNano(rueidis.RedisMessage{}); !got.IsZero() {
+		t.Errorf("parseUnixNano(zero msg) = %v, want zero time", got)
 	}
 }
 
