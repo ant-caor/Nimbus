@@ -45,8 +45,26 @@ Every change keeps the build green under:
 New behavior comes with unit tests; new backends or transports come with an
 integration test. Hot-path changes should include or update a benchmark.
 
-Public API changes must update the docs and add a `CHANGELOG.md` entry under
-`[Unreleased]`.
+Public API changes must also update the docs (godoc / README) in the same PR.
+
+## Changelog
+
+This project keeps a changelog in [`CHANGELOG.md`](CHANGELOG.md) following
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/), paired with
+[Semantic Versioning](https://semver.org/). This has been the convention since the
+first release (`v0.1.0`).
+
+- Add an entry for every **user-facing** change under the top
+  **`## [Unreleased]`** section, grouped by type — **Added**, **Changed**,
+  **Deprecated**, **Removed**, **Fixed**, **Security**. Only include the
+  subsections that actually have entries.
+- Write **for humans**: one entry per notable change, describing the impact (not a
+  raw commit dump), and name the relevant exported symbols where it helps.
+- **Internal-only** changes (tests, CI, refactors with no observable effect) do
+  not need an entry.
+- On release, the `[Unreleased]` entries move under a dated
+  `## [X.Y.Z] - YYYY-MM-DD` heading and the compare links at the bottom are
+  updated — see [RELEASING.md](RELEASING.md).
 
 ## Developer Certificate of Origin (sign-off)
 
