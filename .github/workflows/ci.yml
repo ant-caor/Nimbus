@@ -168,13 +168,59 @@ jobs:
         working-directory: test/integration
         run: go test -count=1 -timeout=15m ./...
 
+  changelog:
+    name: changelog (Keep a Changelog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0 # need the PR base commit to diff the changed files
+      # Format gate (every event): the file must follow Keep a Changelog —
+      # an [Unreleased] section, only the canonical category headings, and a
+      # reference to the spec. Catches typo'd/removed sections regardless of PR.
+      - name: Validate CHANGELOG.md format
+        run: |
+          f=CHANGELOG.md
+          test -f "$f" || { echo "::error::CHANGELOG.md is missing"; exit 1; }
+          grep -qE '^## \[Unreleased\]' "$f" \
+            || { echo "::error::CHANGELOG.md must have a '## [Unreleased]' section"; exit 1; }
+          grep -qi 'keepachangelog\.com' "$f" \
+            || { echo "::error::CHANGELOG.md must reference Keep a Changelog"; exit 1; }
+          bad=$(grep -E '^### ' "$f" | grep -vE '^### (Added|Changed|Deprecated|Removed|Fixed|Security)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Non-standard changelog heading(s) — use Added/Changed/Deprecated/Removed/Fixed/Security:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "CHANGELOG.md format OK (Keep a Changelog)."
+      # Update gate (PRs only): a PR that changes Go source or a go.mod must add a
+      # CHANGELOG.md entry. Internal-only changes (tests, CI, no-op refactors) opt
+      # out with the 'skip-changelog' label, per the CONTRIBUTING convention.
+      - name: Require a changelog entry for code changes
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          changed=$(git diff --name-only "$BASE_SHA...$HEAD_SHA")
+          code=$(printf '%s\n' "$changed" | grep -E '\.go$' | grep -vE '(^|/)[^/]*_test\.go$' || true)
+          mods=$(printf '%s\n' "$changed" | grep -E '(^|/)go\.mod$' || true)
+          touched=$(printf '%s\n' "$changed" | grep -E '^CHANGELOG\.md$' || true)
+          if { [ -n "$code" ] || [ -n "$mods" ]; } && [ -z "$touched" ]; then
+            echo "::error::This PR changes code but does not update CHANGELOG.md. Add an entry under '## [Unreleased]' (Keep a Changelog), or apply the 'skip-changelog' label for an internal-only change."
+            echo "--- code / module files changed ---"
+            printf '%s\n' $code $mods
+            exit 1
+          fi
+          echo "Changelog requirement satisfied."
+
   # Single required check for branch protection: it fans in every job above, so
   # the ruleset on main requires only "ci-success" instead of 17 brittle matrix
   # context names. It fails if any needed job failed or was cancelled.
   ci-success:
     name: ci-success
     if: always()
-    needs: [gofmt, test, lint, govulncheck, coverage, bench, integration]
+    needs: [gofmt, test, lint, govulncheck, coverage, bench, integration, changelog]
     runs-on: ubuntu-latest
     steps:
       - name: Verify all required jobs succeeded
