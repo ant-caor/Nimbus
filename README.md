@@ -47,6 +47,10 @@ Keys are string-keyed internally (`Store[V]`), with the user's key type `K` livi
 
 ## Quickstart
 
+```sh
+go get github.com/ant-caor/nimbus
+```
+
 ```go
 cache, err := nimbus.NewBuilder[string, User](loadUser).
     L1(memory.New[User]()).               // in-process accelerator
@@ -139,6 +143,11 @@ It reports `nimbus.hits`, `.stale_hits`, `.misses`, `.loads`, `.load_errors`,
 L1/L2 sharing on your laptop (see `demo/local/README.md`). For the full
 cross-instance bus over Pub/Sub deployed to Cloud Run via Terraform, see
 `examples/cloudrun/` (Cloud Run + Memorystore + Pub/Sub + Direct VPC Egress).
+
+For a fully **GCP-free** coherence demo — L1 + Redis L2 + a **Redis Pub/Sub**
+bus, no emulator and no cloud — see `examples/redisbus/`: two in-process
+instances share one Redis, and a `Set` on one evicts the other's L1 over the
+bus (`docker run -p 6379:6379 redis`, then `go run .`).
 
 ---
 

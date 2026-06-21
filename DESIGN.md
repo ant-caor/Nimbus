@@ -207,6 +207,12 @@ point of the golden rule: the bus shrinks the convergence window from "L1 TTL"
 to "milliseconds" for instances that receive a broadcast, but correctness never
 depends on any instance receiving it.
 
+The push handler can additionally verify the Pub/Sub OIDC token **in process**
+(`gcppubsub.WithPushAuth`) — Google signature, issuer, a verified email, the
+`aud` claim, and a service-account allowlist — as defense-in-depth alongside the
+Cloud Run `run.invoker` IAM binding (the network-layer guard). It is opt-in, so
+the bare `PushHandler` stays usable when auth is terminated elsewhere.
+
 Eviction on receipt is **unconditional** (drop the L1 entry). Dropping is always
 safe — the next read repopulates from L2 — so the version on a key event is a
 hint to avoid a redundant drop, not a correctness gate. Tag events carry the

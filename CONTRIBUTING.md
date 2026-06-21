@@ -1,6 +1,6 @@
 # Contributing to Nimbus
 
-Thanks for your interest. Nimbus is in early development; issues and PRs are welcome.
+Thanks for your interest. Nimbus is young (pre-1.0); issues and PRs are welcome.
 
 ## Code of Conduct
 
@@ -61,7 +61,9 @@ first release (`v0.1.0`).
 - Write **for humans**: one entry per notable change, describing the impact (not a
   raw commit dump), and name the relevant exported symbols where it helps.
 - **Internal-only** changes (tests, CI, refactors with no observable effect) do
-  not need an entry.
+  not need an entry. CI enforces this: a PR that changes Go source or a `go.mod`
+  must touch `CHANGELOG.md`, or carry the **`skip-changelog`** label for an
+  internal-only change.
 - On release, the `[Unreleased]` entries move under a dated
   `## [X.Y.Z] - YYYY-MM-DD` heading and the compare links at the bottom are
   updated — see [RELEASING.md](RELEASING.md).
