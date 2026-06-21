@@ -192,8 +192,8 @@ source of truth and cross-instance coherence.
 | Topology | L1 + versioned shared L2 + invalidation bus | peer-to-peer per-process replication | single-instance in-process |
 | Cross-instance coherence | yes (bus eviction + L2 versions) | partial (peers fill from each other; no shared store) | none |
 | Shared source of truth | yes — versioned Redis L2 | no | no |
-| Invalidation / writes | `Set`/`Invalidate`/`InvalidateTag` + TTL + SWR | immutable values, no key invalidation, no TTL | TTL/eviction only, single instance |
-| Stampede protection | yes (singleflight, cross-instance via L2) | yes (per peer) | no (eviction-focused) |
+| Invalidation / writes | `Set`/`Invalidate`/`InvalidateTag` + TTL + SWR | immutable values, no TTL; only coarse `Remove` | TTL/eviction + explicit delete, single instance |
+| Stampede protection | yes (singleflight, cross-instance via L2) | yes (cluster-wide; owner peer loads) | Ristretto: no; Otter v2: loader single-flight |
 | Fits scale-to-zero / autoscaling | yes — designed for it | poor (peers are long-lived, addressed individually) | n/a (one instance) |
 | Cloud coupling | GCP **or** cloud-agnostic (Redis L2 + Redis Pub/Sub bus) | none | none |
 | Primary strength | serverless coherence across replicas | LAN peer fan-out for static-ish data | fastest single-node eviction |
