@@ -12,6 +12,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"google.golang.org/api/idtoken"
+
 	"github.com/ant-caor/nimbus/invalidation"
 )
 
@@ -229,6 +231,72 @@ func TestPushHandlerUnauthenticatedStillWorks(t *testing.T) {
 		}
 	default:
 		t.Fatal("unauthenticated handler did not dispatch")
+	}
+}
+
+// TestTrustedEmail covers the claim checks idtoken.Validate does NOT perform
+// (issuer and email_verified), which the default verifier enforces itself. It is
+// a pure function of the parsed payload, so it needs no live Google token.
+func TestTrustedEmail(t *testing.T) {
+	const sa = "push@proj.iam.gserviceaccount.com"
+	tests := []struct {
+		name    string
+		payload *idtoken.Payload
+		want    string
+		wantErr bool
+	}{
+		{
+			name:    "google issuer with verified email",
+			payload: &idtoken.Payload{Issuer: "https://accounts.google.com", Claims: map[string]any{"email": sa, "email_verified": true}},
+			want:    sa,
+		},
+		{
+			name:    "bare google issuer accepted",
+			payload: &idtoken.Payload{Issuer: "accounts.google.com", Claims: map[string]any{"email": sa, "email_verified": true}},
+			want:    sa,
+		},
+		{
+			name:    "untrusted issuer rejected",
+			payload: &idtoken.Payload{Issuer: "https://accounts.evil.example", Claims: map[string]any{"email": sa, "email_verified": true}},
+			wantErr: true,
+		},
+		{
+			name:    "missing email rejected",
+			payload: &idtoken.Payload{Issuer: "https://accounts.google.com", Claims: map[string]any{"email_verified": true}},
+			wantErr: true,
+		},
+		{
+			name:    "unverified email rejected",
+			payload: &idtoken.Payload{Issuer: "https://accounts.google.com", Claims: map[string]any{"email": sa, "email_verified": false}},
+			wantErr: true,
+		},
+		{
+			name:    "missing email_verified rejected",
+			payload: &idtoken.Payload{Issuer: "https://accounts.google.com", Claims: map[string]any{"email": sa}},
+			wantErr: true,
+		},
+		{
+			name:    "non-bool email_verified rejected",
+			payload: &idtoken.Payload{Issuer: "https://accounts.google.com", Claims: map[string]any{"email": sa, "email_verified": "true"}},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := trustedEmail(tt.payload)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("trustedEmail = %q, want error", got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Fatalf("email = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

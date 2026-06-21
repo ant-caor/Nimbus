@@ -33,8 +33,9 @@ The `/_ah/push` endpoint is protected by **two independent layers**:
    so the endpoint is not publicly invocable.
 2. **In-process OIDC verification (application layer).** The handler additionally
    verifies the Pub/Sub OIDC JWT itself via `gcppubsub.WithPushAuth`: it checks
-   the Google signature/issuer, the `aud` claim against `PUSH_AUDIENCE`, and the
-   `email` claim against the `PUSH_SA_EMAIL` allowlist. It returns **401** for a
+   the Google signature (via `idtoken`), the issuer and a verified email
+   (`email_verified`), the `aud` claim against `PUSH_AUDIENCE`, and the `email`
+   claim against the `PUSH_SA_EMAIL` allowlist. It returns **401** for a
    missing/invalid token, **403** for a wrong audience or non-allowlisted
    account, and **204** only after verification passes.
 

@@ -54,12 +54,14 @@ patch releases never do.
 - **In-process OIDC verification on the GCP Pub/Sub push handler.**
   `gcppubsub.WithPushAuth(audience string, allowedServiceAccounts ...string)`,
   an opt-in option on `NewPush`, makes `PushBus.Handler()` verify the Pub/Sub
-  OIDC token before dispatching: it validates the Google signature/issuer
-  (via `idtoken`), the `aud` claim against the configured audience, and the
-  `email` claim against a service-account allowlist. The handler returns 401 for
-  a missing/malformed `Authorization` header or a token that fails
-  signature/validation, 403 for an audience mismatch or a non-allowlisted
-  account, and 204 only after verification passes. This is defense-in-depth
+  OIDC token before dispatching: it validates the Google signature and expiry
+  (via `idtoken`) and then enforces the claims `idtoken` does not check itself —
+  a Google issuer and a verified (`email_verified`) email — plus the `aud` claim
+  against the configured audience and the `email` claim against a service-account
+  allowlist. The handler returns 401 for a missing/malformed `Authorization`
+  header or a token that fails signature, issuer, or verified-email validation,
+  403 for an audience mismatch or a non-allowlisted account, and 204 only after
+  verification passes. This is defense-in-depth
   alongside the Cloud Run `run.invoker` IAM binding; the existing `PushHandler`
   stays available unauthenticated for advanced users. The `examples/cloudrun`
   service enables it by default (`PUSH_AUDIENCE` / `PUSH_SA_EMAIL`), and the

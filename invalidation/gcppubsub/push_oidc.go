@@ -6,6 +6,8 @@ package gcppubsub
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
@@ -31,11 +33,12 @@ type tokenVerifier interface {
 	verify(ctx context.Context, rawToken string) (email, audience string, err error)
 }
 
-// googleIDTokenVerifier is the default verifier; it wraps idtoken.Validate,
-// which checks the token signature against Google's public certs and validates
-// the issuer. Audience is passed empty so an audience mismatch surfaces as a
-// distinguishable 403 (decided by the caller) rather than a 401 from the
-// validator.
+// googleIDTokenVerifier is the default verifier. It wraps idtoken.Validate,
+// which verifies the token signature against Google's public certs and checks
+// expiry — but NOT the issuer or the email claim. trustedEmail enforces those:
+// a Google issuer and a verified, non-empty email. Audience is passed empty to
+// idtoken.Validate so an audience mismatch surfaces as a distinguishable 403
+// (decided by the caller) rather than a 401 from the validator.
 type googleIDTokenVerifier struct{}
 
 func (googleIDTokenVerifier) verify(ctx context.Context, rawToken string) (string, string, error) {
@@ -43,8 +46,36 @@ func (googleIDTokenVerifier) verify(ctx context.Context, rawToken string) (strin
 	if err != nil {
 		return "", "", err
 	}
-	email, _ := payload.Claims["email"].(string)
+	email, err := trustedEmail(payload)
+	if err != nil {
+		return "", "", err
+	}
 	return email, payload.Audience, nil
+}
+
+// googleIssuers is the set of accepted "iss" claim values for a Google-minted
+// OIDC token. idtoken.Validate verifies the signature and expiry but never
+// checks the issuer, so it is enforced here.
+var googleIssuers = map[string]struct{}{
+	"https://accounts.google.com": {},
+	"accounts.google.com":         {},
+}
+
+// trustedEmail enforces the claims idtoken.Validate leaves to the caller: the
+// token must be issued by Google and carry a verified, non-empty email (the
+// service-account identity). It returns that email or an error. Kept as a pure
+// function of the parsed payload so it is unit-testable without a live Google
+// token.
+func trustedEmail(p *idtoken.Payload) (string, error) {
+	if _, ok := googleIssuers[p.Issuer]; !ok {
+		return "", fmt.Errorf("untrusted token issuer %q", p.Issuer)
+	}
+	email, _ := p.Claims["email"].(string)
+	verified, _ := p.Claims["email_verified"].(bool)
+	if email == "" || !verified {
+		return "", errors.New("token has no verified email claim")
+	}
+	return email, nil
 }
 
 // newPushAuth builds a pushAuth from an expected audience and an allowlist of
@@ -55,6 +86,11 @@ func newPushAuth(audience string, allowedServiceAccounts []string) *pushAuth {
 		if e != "" {
 			allowed[e] = struct{}{}
 		}
+	}
+	if audience == "" {
+		log.Print("nimbus/gcppubsub: WithPushAuth audience is empty; audience binding " +
+			"is disabled — any audience minted by an allowlisted service account is " +
+			"accepted. Set an explicit audience in production.")
 	}
 	return &pushAuth{
 		audience: audience,

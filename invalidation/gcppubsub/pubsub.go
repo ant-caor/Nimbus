@@ -192,15 +192,18 @@ type PushOption func(*PushBus)
 // on the subscription's oidc_token. That can be the push endpoint URL (Pub/Sub's
 // default when audience is omitted) or any stable string set explicitly (the
 // examples/cloudrun Terraform uses a fixed value to avoid a self-reference cycle
-// on the auto-generated service URL). An empty audience here skips the audience
-// check (signature and issuer are still verified). allowedServiceAccounts is the
-// allowlist of service-account emails (the JWT "email" claim) permitted to push;
-// supply the push subscription's service account.
+// on the auto-generated service URL). An empty audience here disables audience
+// binding — a token for any audience minted by an allowlisted service account is
+// accepted (signature, issuer, and verified email are still enforced); a warning
+// is logged at construction. allowedServiceAccounts is the allowlist of
+// service-account emails (the JWT "email" claim) permitted to push; supply the
+// push subscription's service account.
 //
 // With this option, Handler() returns 401 for a missing/malformed Authorization
-// header or a token that fails signature/issuer validation, 403 for an audience
-// mismatch or an email not in the allowlist, and 204 only after verification
-// passes. Without it, Handler() is unauthenticated (see PushHandler).
+// header or a token that fails signature, issuer, or verified-email validation,
+// 403 for an audience mismatch or an email not in the allowlist, and 204 only
+// after verification passes. Without it, Handler() is unauthenticated (see
+// PushHandler).
 func WithPushAuth(audience string, allowedServiceAccounts ...string) PushOption {
 	return func(p *PushBus) { p.auth = newPushAuth(audience, allowedServiceAccounts) }
 }
