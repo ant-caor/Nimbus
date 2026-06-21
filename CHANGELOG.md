@@ -51,6 +51,21 @@ patch releases never do.
   version-gated install (`SetIfNewer`), implemented by `store/memory`.
 - `Builder.MaxConcurrentRefresh(n)` to cap concurrent request-bound
   revalidations (default 16 per instance).
+- **In-process OIDC verification on the GCP Pub/Sub push handler.**
+  `gcppubsub.WithPushAuth(audience string, allowedServiceAccounts ...string)`,
+  an opt-in option on `NewPush`, makes `PushBus.Handler()` verify the Pub/Sub
+  OIDC token before dispatching: it validates the Google signature/issuer
+  (via `idtoken`), the `aud` claim against the configured audience, and the
+  `email` claim against a service-account allowlist. The handler returns 401 for
+  a missing/malformed `Authorization` header or a token that fails
+  signature/validation, 403 for an audience mismatch or a non-allowlisted
+  account, and 204 only after verification passes. This is defense-in-depth
+  alongside the Cloud Run `run.invoker` IAM binding; the existing `PushHandler`
+  stays available unauthenticated for advanced users. The `examples/cloudrun`
+  service enables it by default (`PUSH_AUDIENCE` / `PUSH_SA_EMAIL`), and the
+  Terraform now sets an explicit `audience` on the subscription's `oidc_token`.
+  No new dependency: `idtoken` ships with the `google.golang.org/api` module the
+  transport already requires, and the core module stays GCP-free.
 
 ### Changed
 

@@ -174,18 +174,48 @@ var _ invalidation.Bus = (*Bus)(nil)
 type PushBus struct {
 	publisher *pubsub.Publisher
 	topicName string
+	auth      *pushAuth // nil = unauthenticated handler (legacy behavior)
 
 	mu      sync.Mutex
 	handler func(invalidation.Event)
 }
 
+// PushOption configures a PushBus.
+type PushOption func(*PushBus)
+
+// WithPushAuth enables in-process verification of the Pub/Sub OIDC token on the
+// handler returned by Handler(). It is opt-in defense-in-depth that complements
+// (does not replace) the Cloud Run run.invoker IAM binding on the push service
+// account.
+//
+// audience is the expected "aud" claim — it must equal the audience configured
+// on the subscription's oidc_token. That can be the push endpoint URL (Pub/Sub's
+// default when audience is omitted) or any stable string set explicitly (the
+// examples/cloudrun Terraform uses a fixed value to avoid a self-reference cycle
+// on the auto-generated service URL). An empty audience here skips the audience
+// check (signature and issuer are still verified). allowedServiceAccounts is the
+// allowlist of service-account emails (the JWT "email" claim) permitted to push;
+// supply the push subscription's service account.
+//
+// With this option, Handler() returns 401 for a missing/malformed Authorization
+// header or a token that fails signature/issuer validation, 403 for an audience
+// mismatch or an email not in the allowlist, and 204 only after verification
+// passes. Without it, Handler() is unauthenticated (see PushHandler).
+func WithPushAuth(audience string, allowedServiceAccounts ...string) PushOption {
+	return func(p *PushBus) { p.auth = newPushAuth(audience, allowedServiceAccounts) }
+}
+
 // NewPush ensures the topic exists and returns a push bus.
-func NewPush(ctx context.Context, client *pubsub.Client, topicID string) (*PushBus, error) {
+func NewPush(ctx context.Context, client *pubsub.Client, topicID string, opts ...PushOption) (*PushBus, error) {
 	topicName := fmt.Sprintf("projects/%s/topics/%s", client.Project(), topicID)
 	if err := ensureTopic(ctx, client, topicName); err != nil {
 		return nil, err
 	}
-	return &PushBus{publisher: client.Publisher(topicID), topicName: topicName}, nil
+	p := &PushBus{publisher: client.Publisher(topicID), topicName: topicName}
+	for _, o := range opts {
+		o(p)
+	}
+	return p, nil
 }
 
 // ensureTopic best-effort creates the topic. AlreadyExists means another
@@ -230,16 +260,19 @@ func (p *PushBus) Subscribe(ctx context.Context, handler func(invalidation.Event
 func (p *PushBus) Close() error { return nil }
 
 // Handler returns the http.Handler to mount for the push subscription endpoint.
-// Put it behind OIDC push authentication (see examples/cloudrun).
+// If the bus was built with WithPushAuth, the handler verifies the Pub/Sub OIDC
+// token (audience + service-account allowlist) before dispatching; otherwise it
+// is unauthenticated and relies on the Cloud Run run.invoker IAM binding alone
+// (see examples/cloudrun).
 func (p *PushBus) Handler() http.Handler {
-	return PushHandler(func(ev invalidation.Event) {
+	return pushHandler(func(ev invalidation.Event) {
 		p.mu.Lock()
 		h := p.handler
 		p.mu.Unlock()
 		if h != nil {
 			h(ev)
 		}
-	})
+	}, p.auth)
 }
 
 var _ invalidation.Bus = (*PushBus)(nil)
