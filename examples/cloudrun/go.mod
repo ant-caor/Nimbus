@@ -7,7 +7,7 @@ require (
 	github.com/ant-caor/nimbus v0.1.0
 	github.com/ant-caor/nimbus/invalidation/gcppubsub v0.0.0
 	github.com/ant-caor/nimbus/metrics v0.0.0
-	github.com/redis/rueidis v1.0.75
+	github.com/redis/rueidis v1.0.76
 	go.opentelemetry.io/otel/exporters/stdout/stdoutmetric v1.44.0
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 )
