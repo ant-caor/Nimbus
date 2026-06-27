@@ -111,7 +111,9 @@ type cache[K comparable, V any] struct {
 	tagMu sync.Mutex
 	tags  map[string]map[string]struct{} // local, non-authoritative tag index
 
-	closed atomic.Bool
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
 
 	stats struct {
 		hits, staleHits, misses, loads, loadErrors, negHits, refreshes, busEvicts, l2Errors uint64
@@ -122,6 +124,9 @@ type cache[K comparable, V any] struct {
 // entry is always safe (the next read repopulates from L2), so eviction is
 // unconditional; the version on the event is a hint, not a correctness gate.
 func (c *cache[K, V]) onEvent(ev invalidation.Event) {
+	if c.closed.Load() {
+		return // shutting down; stop applying broadcasts (bus events are best-effort)
+	}
 	if ev.OriginID == c.originID {
 		return // our own broadcast; we already evicted locally
 	}
@@ -422,28 +427,30 @@ func (c *cache[K, V]) Stats() Stats {
 		BusEvicts:    atomic.LoadUint64(&c.stats.busEvicts),
 		L2Errors:     atomic.LoadUint64(&c.stats.l2Errors),
 	}
-	if st, ok := c.l1.(interface {
-		Evictions() uint64
-		Len() int
-	}); ok {
+	if st, ok := c.l1.(store.StoreMetrics); ok {
 		s.Evictions = st.Evictions()
 		s.L1Len = st.Len()
 	}
 	return s
 }
 
+// Close shuts the cache down: it stops the bus subscriber and waits for it,
+// then closes the refresher. It is idempotent — repeat calls return the same
+// result without redoing the work — and reports the refresher's Close error.
+// It deliberately does not close c.l1/c.l2 or the bus: the caller owns any
+// store, client, or bus it passed in.
 func (c *cache[K, V]) Close() error {
-	c.closed.Store(true)
-	if c.busCancel != nil {
-		c.busCancel() // stop the subscriber goroutine
-	}
-	c.busWG.Wait()
-	if c.refresher != nil {
-		_ = c.refresher.Close()
-	}
-	// We deliberately do not close c.l1/c.l2 or the bus: the caller owns any
-	// store, client, or bus it passed in.
-	return nil
+	c.closeOnce.Do(func() {
+		c.closed.Store(true)
+		if c.busCancel != nil {
+			c.busCancel() // stop the subscriber goroutine
+		}
+		c.busWG.Wait()
+		if c.refresher != nil {
+			c.closeErr = c.refresher.Close()
+		}
+	})
+	return c.closeErr
 }
 
 func (c *cache[K, V]) publish(ctx context.Context, ev invalidation.Event) {
