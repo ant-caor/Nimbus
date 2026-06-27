@@ -3,7 +3,7 @@ module github.com/ant-caor/nimbus
 go 1.25.0
 
 require (
-	github.com/redis/rueidis v1.0.75
+	github.com/redis/rueidis v1.0.76
 	golang.org/x/sync v0.21.0
 )
 

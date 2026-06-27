@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/ant-caor/nimbus v0.0.0
-	github.com/redis/rueidis v1.0.75
+	github.com/redis/rueidis v1.0.76
 )
 
 require (
