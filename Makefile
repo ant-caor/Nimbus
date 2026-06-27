@@ -1,9 +1,13 @@
 .PHONY: all test race bench lint fmt tidy integration
 
-# Modules in this repo. The library modules ship to users; examples/demo are
-# package main (never published) and test/integration is test infra.
+# Modules in this repo. The library modules ship to users; everything else is
+# package main (examples/demo, never published) or test infra (test/integration).
 LIB_MODULES        := . metrics invalidation/gcppubsub
-ALL_MODULES        := $(LIB_MODULES) examples/cloudrun demo/local test/integration
+# Every module with a go.mod, discovered rather than hand-listed so a newly
+# added module is never silently skipped by tidy/lint (a stale examples/redisbus
+# slipped through exactly that way once). Mirrors the dependabot-auto-tidy
+# workflow, which enumerates modules the same way.
+ALL_MODULES        := $(shell find . -name go.mod -not -path '*/vendor/*' -exec dirname {} \; | sed 's|^\./||' | sort)
 # Modules with unit tests / benchmarks.
 TESTABLE_MODULES   := $(LIB_MODULES)
 
