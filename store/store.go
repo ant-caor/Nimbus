@@ -59,12 +59,12 @@ type ConditionalStore[V any] interface {
 	SetIfNewer(ctx context.Context, key string, e Entry[V]) (installed bool, err error)
 }
 
-// StoreMetrics is an optional interface a Store may implement to report
-// operational counters for observability. nimbus's Cache.Stats populates its
-// Evictions and L1Len fields from it when the L1 tier implements it; a store
-// that does not is simply not reported on. It carries no value type because the
-// counters are independent of V.
-type StoreMetrics interface {
+// Metrics is an optional interface a Store may implement to report operational
+// counters for observability. nimbus's Cache.Stats populates its Evictions and
+// L1Len fields from it when the L1 tier implements it; a store that does not is
+// simply not reported on. It carries no value type because the counters are
+// independent of V.
+type Metrics interface {
 	// Evictions is the cumulative number of entries removed to respect a size or
 	// TTL bound (not counting explicit Deletes).
 	Evictions() uint64

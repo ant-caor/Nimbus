@@ -11,8 +11,8 @@ patch releases never do.
 
 ### Added
 
-- `store.StoreMetrics`, an optional interface a `store.Store` may implement to
-  report operational counters (`Evictions() uint64`, `Len() int`). `Cache.Stats`
+- `store.Metrics`, an optional interface a `store.Store` may implement to report
+  operational counters (`Evictions() uint64`, `Len() int`). `Cache.Stats`
   populates its `Evictions` and `L1Len` fields from the L1 tier when it
   implements this interface (the bundled `store/memory` does), replacing a
   previously undiscoverable inline interface check.
