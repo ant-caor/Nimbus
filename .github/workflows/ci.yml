@@ -65,6 +65,10 @@ jobs:
     name: golangci-lint
     runs-on: ubuntu-latest
     strategy:
+      # Lint every module independently: one broken leg must not cancel (and so
+      # mask) the other five. A dependency bump that leaves a sibling module
+      # un-tidied fails only that module's leg — keep the rest reporting.
+      fail-fast: false
       matrix:
         # Every module, including the package-main examples/demo, so a broken
         # build there is caught (golangci-lint type-checks the code).
@@ -196,8 +200,14 @@ jobs:
       # Update gate (PRs only): a PR that changes Go source or a go.mod must add a
       # CHANGELOG.md entry. Internal-only changes (tests, CI, no-op refactors) opt
       # out with the 'skip-changelog' label, per the CONTRIBUTING convention.
+      # Dependabot's routine dependency bumps are exempt by author — they are
+      # changelog noise pre-1.0, and the dependabot-auto-tidy workflow already
+      # touches their go.mod files; a maintainer may still add an entry by hand.
       - name: Require a changelog entry for code changes
-        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
+        if: >-
+          github.event_name == 'pull_request'
+          && github.event.pull_request.user.login != 'dependabot[bot]'
+          && !contains(github.event.pull_request.labels.*.name, 'skip-changelog')
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}

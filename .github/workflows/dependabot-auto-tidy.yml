@@ -1,0 +1,139 @@
+name: Dependabot auto-tidy
+
+# Why this exists
+# ---------------
+# Dependabot bumps a dependency in the single module that declares it. But
+# Nimbus's sibling modules (examples/cloudrun, demo/local, test/integration)
+# consume the core and gcppubsub modules through local `replace` directives and
+# pin the same dependency themselves, so each one's go.mod/go.sum must be
+# re-tidied to the new version. CI validates every module in isolation
+# (GOWORK=off, -mod=readonly), so without this a routine bump leaves every
+# consumer module failing `go mod tidy` / package load even though the bump
+# itself is perfectly clean.
+#
+# This workflow runs `go mod tidy` across every module on a Dependabot PR and
+# commits the propagation back onto the PR branch.
+#
+# Re-triggering CI: a push made with the default GITHUB_TOKEN does NOT start new
+# workflow runs (GitHub's anti-recursion rule). So to make CI re-run on the
+# tidied commit we push with a fine-grained PAT stored as the Dependabot secret
+# AUTO_TIDY_TOKEN (Contents: read/write on this repo) — a PAT push fires the
+# normal `synchronize` event and CI re-runs green. If that secret is absent the
+# job degrades gracefully: it still pushes the fix with GITHUB_TOKEN (so the
+# branch is correct) and comments asking the maintainer to close+reopen the PR
+# to refresh CI.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# pull_request_target runs in the base-repo context with a (re-elevatable)
+# read-write token. This is safe here because the job:
+#   1. only runs for Dependabot's own PRs (the `if` guard below) — the `[bot]`
+#      suffix on the author login cannot be spoofed by a human/fork PR,
+#   2. never builds or tests the PR's code — it runs `go mod tidy`, which
+#      resolves and downloads modules but executes none of them, and
+#   3. enumerates modules with `find` and calls `go` directly, never a
+#      PR-controlled script such as the Makefile. No head-controlled code runs
+#      between checkout and push, so the push credential is never exposed to it.
+permissions:
+  contents: write
+  pull-requests: write
+
+# Serialize per PR so an open+synchronize burst can't race on the push. Don't
+# cancel in flight — a cancelled run could interrupt a push mid-way.
+concurrency:
+  group: auto-tidy-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  tidy:
+    name: tidy modules
+    # Only Dependabot's PRs. `user.login` (the PR author) is stable regardless of
+    # which event type or actor triggered this particular run, and the reserved
+    # `[bot]` suffix means it cannot be impersonated.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    env:
+      GOWORK: "off"
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          # Dependabot branches live on this repo (not a fork), so head.ref is
+          # pushable. persist-credentials:false keeps the auto-token out of
+          # .git/config — we push with an explicit credential below.
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Skip the heavy steps unless the PR actually touched a go.mod/go.sum (the
+      # github-actions ecosystem, for instance, changes nothing Go-related).
+      - name: Detect Go module changes
+        id: gochanges
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qE '(^|/)go\.(mod|sum)$'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No go.mod/go.sum changes; nothing to tidy."
+          fi
+
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        if: steps.gochanges.outputs.changed == 'true'
+        with:
+          # 1.25.x resolves to the latest patch, which satisfies any go-directive
+          # floor a dependency may raise (e.g. google.golang.org/api -> 1.25.8).
+          go-version: "1.25.x"
+
+      - name: go mod tidy (every module)
+        if: steps.gochanges.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          # Enumerate module roots directly — do NOT invoke `make`, whose target
+          # would be read from the (PR-controlled) Makefile.
+          for mod in $(find . -name go.mod -not -path '*/vendor/*' | sort); do
+            dir=$(dirname "$mod")
+            echo "== tidy $dir =="
+            ( cd "$dir" && go mod tidy )
+          done
+
+      - name: Commit & push the tidy (re-runs CI when a PAT is configured)
+        if: steps.gochanges.outputs.changed == 'true'
+        env:
+          # Prefer the PAT so the push fires `synchronize` and CI re-runs; fall
+          # back to GITHUB_TOKEN (push works, but CI won't auto-re-run).
+          AUTO_TIDY_TOKEN: ${{ secrets.AUTO_TIDY_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "All modules already tidy; nothing to push."
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -s \
+            -m "build(deps): tidy sibling modules after dependency bump" \
+            -m "Propagates the bumped version across modules that consume it via a local replace directive, so each module's go.mod/go.sum stays consistent under isolated (GOWORK=off) CI. Automated follow-up to the Dependabot bump."
+
+          # Both candidate tokens are registered secrets and are masked in logs.
+          if [ -n "${AUTO_TIDY_TOKEN}" ]; then
+            PUSH_TOKEN="${AUTO_TIDY_TOKEN}"; MODE="pat"
+          else
+            PUSH_TOKEN="${GH_TOKEN}"; MODE="degraded"
+          fi
+          git push "https://x-access-token:${PUSH_TOKEN}@github.com/${REPO}.git" "HEAD:${HEAD_REF}"
+
+          if [ "$MODE" = "degraded" ]; then
+            echo "::warning::AUTO_TIDY_TOKEN not set — pushed with GITHUB_TOKEN, which does not re-trigger CI."
+            gh pr comment "$PR" --body \
+              "🤖 Tidied the sibling modules for this dependency bump and pushed the result, so the branch is now consistent. CI **won't auto-re-run** because the push used \`GITHUB_TOKEN\`. **Close and reopen this PR** to refresh CI, or set the \`AUTO_TIDY_TOKEN\` Dependabot secret (a fine-grained PAT with Contents: read/write) for fully hands-off runs."
+          fi
