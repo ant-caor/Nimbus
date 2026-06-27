@@ -66,18 +66,20 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       # Lint every module independently: one broken leg must not cancel (and so
-      # mask) the other five. A dependency bump that leaves a sibling module
-      # un-tidied fails only that module's leg — keep the rest reporting.
+      # mask) the rest. A dependency bump that leaves a sibling module
+      # un-tidied fails only that module's leg — keep the others reporting.
       fail-fast: false
       matrix:
         # Every module, including the package-main examples/demo, so a broken
-        # build there is caught (golangci-lint type-checks the code).
+        # build there is caught (golangci-lint type-checks the code). Keep this
+        # list in sync with the modules on disk (see the Makefile's ALL_MODULES).
         dir:
           [
             ".",
             "metrics",
             "invalidation/gcppubsub",
             "examples/cloudrun",
+            "examples/redisbus",
             "demo/local",
             "test/integration",
           ]
